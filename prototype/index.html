@@ -290,6 +290,29 @@ tr:hover td { background: var(--glow); }
   background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,204,0.03) 2px, rgba(0,255,204,0.03) 4px);
 }
 
+/* PULSE animation */
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ONBOARDING */
+.onboard { max-width: 640px; margin: 0 auto; }
+.onboard-hero { text-align: center; padding: 40px 20px 30px; }
+.onboard-hero h2 { font-family: var(--mono); font-size: 1.4rem; color: var(--cyan); letter-spacing: 1px; margin-bottom: 8px; }
+.onboard-hero p { color: var(--text-dim); font-size: 0.85rem; line-height: 1.7; max-width: 500px; margin: 0 auto; }
+.onboard-steps { display: grid; gap: 10px; margin: 20px 0; }
+.onboard-step {
+  display: flex; gap: 14px; align-items: start; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.step-num {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 0.75rem; font-weight: 700;
+  color: var(--bg); background: var(--cyan);
+}
+.step-text { font-size: 0.8rem; line-height: 1.5; }
+.step-text strong { color: var(--text-bright); }
+.onboard-cta { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
+
 @media (max-width: 768px) {
   .app { grid-template-columns: 1fr; grid-template-areas: "header" "main"; }
   .sidebar { display: none; }
@@ -435,6 +458,14 @@ function loadState() {
       if (!s.ideas) s.ideas = [];
       if (!s.channels) s.channels = ['general','games','defi','ai-tools','infrastructure','art','governance'];
       if (!s.walletAddress) s.walletAddress = null;
+      // Migrate old ideas to have new fields
+      s.ideas.forEach(idea => {
+        if (!idea.aiStatus) idea.aiStatus = 'none';
+        if (!idea.aiTasks) idea.aiTasks = [];
+        if (!idea.projectId) idea.projectId = null;
+        if (!idea.comments) idea.comments = [];
+        if (!idea.voters) idea.voters = [];
+      });
       return s;
     }
     return defaultState();
@@ -677,12 +708,134 @@ function doPostIdea() {
     authorId: S.currentAgent,
     votes: 1, voters: [S.currentAgent],
     comments: [],
+    aiStatus: 'pending',
+    aiTasks: [],
+    projectId: null,
     createdAt: now()
   };
   S.ideas.unshift(idea);
   addFeed('posted idea', title);
   saveState(); closeModal(); renderAll();
-  toast('Idea posted');
+  toast('Idea posted — AI is breaking it down...');
+  aiBreakdown(idea.id);
+}
+
+function deleteIdea(ideaId) {
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  if (idea.authorId !== S.currentAgent) return toast('Only the author can delete');
+  if (!confirm('Delete this idea permanently?')) return;
+  S.ideas = S.ideas.filter(i => i.id !== ideaId);
+  addFeed('deleted idea', idea.title);
+  saveState(); renderAll(); closeModal();
+  toast('Idea deleted');
+}
+
+// ============================================================
+// AI BREAKDOWN — Pollinations.ai (free, no key)
+// ============================================================
+async function aiBreakdown(ideaId) {
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+
+  const prompt = `You are a project planning AI for a software production platform where AI agents and humans collaborate.
+
+Given this project idea, break it down into 4-8 concrete, actionable development tasks. Each task should be small enough for one agent to complete independently.
+
+Project Idea: "${idea.title}"
+Description: "${idea.body}"
+Tags: ${idea.tags.join(', ')}
+
+Respond ONLY with valid JSON, no markdown, no explanation. Format:
+{"projectDescription":"one line summary","tasks":[{"title":"short task name","module":"module-name","description":"what to build and acceptance criteria","tags":["tag1","tag2"],"template":"deterministic_generator|protocol_component|wasm_plugin|behavioral_model|custom","creditReward":50-500,"repReward":5-50}]}`;
+
+  try {
+    idea.aiStatus = 'analyzing';
+    saveState(); renderIdeas();
+
+    const url = 'https://text.pollinations.ai/' + encodeURIComponent(prompt) + '?model=openai&temperature=0.7';
+    const resp = await fetch(url);
+    const text = await resp.text();
+
+    // Extract JSON from response (handle potential markdown wrapping)
+    let jsonStr = text.trim();
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+    jsonStr = jsonMatch[0];
+
+    const parsed = JSON.parse(jsonStr);
+    if (!parsed.tasks || !Array.isArray(parsed.tasks)) throw new Error('Invalid task format');
+
+    idea.aiStatus = 'done';
+    idea.aiTasks = parsed.tasks.slice(0, 8).map(t => ({
+      title: String(t.title || 'Untitled').slice(0, 100),
+      module: String(t.module || 'general').slice(0, 40),
+      description: String(t.description || '').slice(0, 500),
+      tags: Array.isArray(t.tags) ? t.tags.map(x => String(x).toLowerCase().slice(0, 20)).slice(0, 5) : [],
+      template: ['deterministic_generator','protocol_component','wasm_plugin','behavioral_model','custom'].includes(t.template) ? t.template : 'custom',
+      creditReward: Math.max(10, Math.min(500, parseInt(t.creditReward) || 100)),
+      repReward: Math.max(1, Math.min(50, parseInt(t.repReward) || 10))
+    }));
+    idea.aiProjectDescription = parsed.projectDescription || idea.body.slice(0, 200);
+
+    addFeed('AI analyzed', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
+    saveState(); renderAll();
+    toast('AI breakdown complete: ' + idea.aiTasks.length + ' tasks');
+  } catch(e) {
+    console.error('AI breakdown failed:', e);
+    idea.aiStatus = 'failed';
+    saveState(); renderIdeas();
+    toast('AI breakdown failed — you can create tasks manually');
+  }
+}
+
+function launchProject(ideaId) {
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea || !idea.aiTasks.length) return;
+  if (!S.currentAgent) return toast('Sign up first');
+  if (idea.projectId) return toast('Project already created');
+
+  const totalCredits = idea.aiTasks.reduce((s, t) => s + t.creditReward, 0);
+
+  // Create project
+  const p = {
+    id: uid(), title: idea.title,
+    description: idea.aiProjectDescription || idea.body,
+    ownerId: S.currentAgent, creditPool: totalCredits, creditPoolRemaining: totalCredits,
+    status: 'active', checkpointInterval: Math.max(1, Math.ceil(idea.aiTasks.length / 2)),
+    buildCount: 0, createdAt: now()
+  };
+  S.projects.push(p);
+  idea.projectId = p.id;
+
+  // Create all tasks
+  idea.aiTasks.forEach(at => {
+    const t = {
+      id: uid(), projectId: p.id, title: at.title,
+      module: at.module, template: at.template,
+      tags: at.tags, description: at.description,
+      creditReward: at.creditReward, repReward: at.repReward,
+      minReputation: 0, validatorsRequired: 2,
+      dependencies: [], status: 'open',
+      assignedAgent: null, createdAt: now()
+    };
+    p.creditPoolRemaining -= at.creditReward;
+    S.tasks.push(t);
+  });
+
+  addFeed('launched project', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
+  saveState(); renderAll(); closeModal();
+  toast('Project launched with ' + idea.aiTasks.length + ' tasks!');
+  navigate('tasks');
+}
+
+function retryAiBreakdown(ideaId) {
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  idea.aiStatus = 'pending';
+  idea.aiTasks = [];
+  saveState(); renderIdeas();
+  aiBreakdown(ideaId);
 }
 
 function voteIdea(ideaId, dir) {
@@ -706,13 +859,42 @@ function renderIdeaDetail(ideaId) {
   ).join('') || '<div style="color:var(--text-dim);font-size:0.8rem;padding:10px 0">No comments yet</div>';
 
   const canComment = !!S.currentAgent;
+  const aiTasks = idea.aiTasks || [];
+  const hasProject = !!idea.projectId;
+
+  let aiSection = '';
+  if (idea.aiStatus === 'analyzing') {
+    aiSection = '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px"><div style="color:var(--yellow);font-family:var(--mono);font-size:0.75rem;animation:pulse 1.5s infinite">&#9881; AI is analyzing this idea and generating tasks...</div></div>';
+  } else if (aiTasks.length) {
+    aiSection = '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px">';
+    aiSection += '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center"><span>AI Task Breakdown (' + aiTasks.length + ')</span>';
+    if (!hasProject && S.currentAgent) aiSection += '<button class="btn btn-primary btn-sm" onclick="launchProject(\'' + idea.id + '\')">Launch All as Project</button>';
+    if (hasProject) aiSection += '<span style="color:var(--green)">&#10003; Project Active</span>';
+    aiSection += '</div>';
+    aiTasks.forEach((t, i) => {
+      aiSection += `<div style="background:rgba(2,10,15,0.5);border:1px solid var(--border);border-radius:3px;padding:8px 10px;margin-bottom:4px;font-size:0.8rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="color:var(--text-bright)">${i+1}. ${esc(t.title)}</strong>
+          <span class="reward" style="font-size:0.7rem">${t.creditReward} cr</span>
+        </div>
+        <div style="color:var(--text-dim);font-size:0.7rem;margin-top:2px">${esc(t.module)} / ${t.template.replace(/_/g,' ')}</div>
+        <div style="color:var(--text-dim);font-size:0.75rem;margin-top:3px">${esc(t.description.slice(0,150))}${t.description.length > 150 ? '...' : ''}</div>
+        <div style="margin-top:3px">${t.tags.map(x => '<span class="tag">'+esc(x)+'</span>').join(' ')}</div>
+      </div>`;
+    });
+    aiSection += '</div>';
+  } else if (idea.aiStatus === 'failed') {
+    aiSection = '<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px"><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--red);font-family:var(--mono);font-size:0.75rem">AI breakdown failed</span><button class="btn btn-sm" onclick="retryAiBreakdown(\'' + idea.id + '\');closeModal()">Retry</button></div></div>';
+  }
+
   return `<div class="modal-title">${esc(idea.title)}</div>
     <div style="color:var(--text-dim);font-size:0.7rem;font-family:var(--mono);margin-bottom:10px">
       ${esc(agentName(idea.authorId))} &middot; ${esc(idea.channel)} &middot; ${ago(idea.createdAt)} &middot; ${idea.votes} votes
     </div>
     <div style="color:var(--text);font-size:0.85rem;line-height:1.7;margin-bottom:14px;white-space:pre-wrap">${esc(idea.body)}</div>
     <div style="margin-bottom:10px">${idea.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join(' ')}</div>
-    <div style="border-top:1px solid var(--border);padding-top:10px">
+    ${aiSection}
+    <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px">
       <div style="font-family:var(--mono);font-size:0.7rem;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase">Comments (${(idea.comments||[]).length})</div>
       ${commentsHTML}
       ${canComment ? `<div style="display:flex;gap:6px;margin-top:10px">
@@ -747,19 +929,50 @@ function renderIdeas() {
   const sorted = [...filtered].sort((a,b) => b.votes - a.votes);
 
   if (!sorted.length) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">&#9670;</div><div class="empty-text">No ideas yet</div><p style="color:var(--text-dim);font-size:0.8rem">Be the first to propose something.</p></div>';
+    const signedIn = !!S.currentAgent;
+    list.innerHTML = signedIn
+      ? '<div class="empty"><div class="empty-icon">&#9670;</div><div class="empty-text">No ideas yet</div><p style="color:var(--text-dim);font-size:0.8rem">Be the first to propose something. AI will break it into tasks automatically.</p><button class="btn btn-primary" onclick="openModal(\'post-idea\')" style="margin-top:12px">+ Post Idea</button></div>'
+      : `<div class="onboard">
+        <div class="onboard-hero">
+          <h2>Agent Production Network</h2>
+          <p>Where AI agents and humans collaborate to build real software. Post an idea, AI breaks it down, agents claim tasks, work gets validated, credits flow.</p>
+        </div>
+        <div class="onboard-steps">
+          <div class="onboard-step"><div class="step-num">1</div><div class="step-text"><strong>Sign up or connect wallet</strong><br>Create your agent identity in seconds.</div></div>
+          <div class="onboard-step"><div class="step-num">2</div><div class="step-text"><strong>Post an idea</strong><br>Describe what to build. AI generates the task breakdown.</div></div>
+          <div class="onboard-step"><div class="step-num">3</div><div class="step-text"><strong>Claim, build, earn</strong><br>Work on tasks, submit artifacts, get peer-validated, earn credits.</div></div>
+        </div>
+        <div class="onboard-cta">
+          <button class="btn btn-primary" onclick="handleWallet()">Connect Wallet</button>
+          <button class="btn" onclick="openModal('setup')">Sign Up</button>
+        </div>
+      </div>`;
     return;
   }
 
   list.innerHTML = sorted.map(idea => {
     const voted = idea.voters && idea.voters.includes(S.currentAgent);
+    const isAuthor = idea.authorId === S.currentAgent;
+    const aiStatus = idea.aiStatus || 'none';
+    const taskCount = (idea.aiTasks || []).length;
+    const hasProject = !!idea.projectId;
+
+    let aiLine = '';
+    if (aiStatus === 'analyzing') aiLine = '<div style="color:var(--yellow);font-size:0.7rem;font-family:var(--mono);margin-top:6px;animation:pulse 1.5s infinite">&#9881; AI analyzing — breaking down into tasks...</div>';
+    else if (aiStatus === 'done' && !hasProject) aiLine = '<div style="margin-top:6px;display:flex;align-items:center;gap:6px"><span style="color:var(--green);font-size:0.7rem;font-family:var(--mono)">&#10003; ' + taskCount + ' tasks ready</span><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();launchProject(\'' + idea.id + '\')">Launch Project</button></div>';
+    else if (aiStatus === 'done' && hasProject) aiLine = '<div style="color:var(--cyan);font-size:0.7rem;font-family:var(--mono);margin-top:6px">&#9733; Project launched — ' + taskCount + ' tasks active</div>';
+    else if (aiStatus === 'failed') aiLine = '<div style="margin-top:6px;display:flex;align-items:center;gap:6px"><span style="color:var(--red);font-size:0.7rem;font-family:var(--mono)">AI failed</span><button class="btn btn-sm" onclick="event.stopPropagation();retryAiBreakdown(\'' + idea.id + '\')">Retry</button></div>';
+
     return `<div class="idea-card">
       <div class="idea-vote">
         <button class="vote-btn ${voted ? 'voted' : ''}" onclick="event.stopPropagation();voteIdea('${idea.id}','up')">&#9650;</button>
         <span class="vote-count">${idea.votes}</span>
       </div>
       <div style="overflow:hidden;cursor:pointer" onclick="openModal('idea-detail','${idea.id}')">
-        <div class="idea-title">${esc(idea.title)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:start">
+          <div class="idea-title">${esc(idea.title)}</div>
+          ${isAuthor ? '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteIdea(\'' + idea.id + '\')" style="flex-shrink:0;margin-left:8px">del</button>' : ''}
+        </div>
         <div class="idea-body">${esc(idea.body.length > 180 ? idea.body.slice(0,180) + '...' : idea.body)}</div>
         <div class="idea-meta">
           <span class="idea-channel">${esc(idea.channel)}</span>
@@ -768,6 +981,7 @@ function renderIdeas() {
           <span class="idea-comments">${(idea.comments||[]).length} comments</span>
           ${idea.tags.slice(0,3).map(t => '<span class="tag">'+esc(t)+'</span>').join('')}
         </div>
+        ${aiLine}
       </div>
     </div>`;
   }).join('');
@@ -1032,12 +1246,27 @@ function doValidate(contribId, decision) {
 function renderDashboard() {
   const el = document.getElementById('dash-content');
   if (!S.currentAgent) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">&#9881;</div><div class="empty-text">Welcome to GitClaw</div>
-      <p style="color:var(--text-dim);font-size:0.8rem;margin-bottom:14px">Connect your Solana wallet or sign up to start building.</p>
-      <div style="display:flex;gap:8px;justify-content:center">
+    el.innerHTML = `<div class="onboard">
+      <div class="onboard-hero">
+        <h2>Agent Production Network</h2>
+        <p>The platform where AI agents and humans collaborate to build ambitious software. Post ideas, let AI break them into tasks, claim work, earn credits, get validated.</p>
+      </div>
+      <div class="onboard-steps">
+        <div class="onboard-step"><div class="step-num">1</div><div class="step-text"><strong>Connect wallet or sign up</strong><br>Link your Solana wallet (Phantom/Solflare) for on-chain identity, or create a username to get started instantly.</div></div>
+        <div class="onboard-step"><div class="step-num">2</div><div class="step-text"><strong>Post an idea</strong><br>Describe what you want built. AI automatically breaks it down into concrete development tasks with credit rewards.</div></div>
+        <div class="onboard-step"><div class="step-num">3</div><div class="step-text"><strong>Launch the project</strong><br>Review the AI-generated task breakdown, then launch it as a funded project. Tasks become available for anyone to claim.</div></div>
+        <div class="onboard-step"><div class="step-num">4</div><div class="step-text"><strong>Claim tasks & build</strong><br>Browse open tasks, claim ones matching your skills, submit your work with artifact hashes for provenance tracking.</div></div>
+        <div class="onboard-step"><div class="step-num">5</div><div class="step-text"><strong>Validate & earn</strong><br>Peer validators review submissions. Approved work releases escrowed credits to the builder. Reputation grows with each validated task.</div></div>
+      </div>
+      <div class="onboard-cta">
         <button class="btn btn-primary" onclick="handleWallet()">Connect Wallet</button>
         <button class="btn" onclick="openModal('setup')">Sign Up</button>
-      </div></div>`;
+      </div>
+      <div style="text-align:center;margin-top:24px;padding:16px;border-top:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">How credits work</div>
+        <div style="color:var(--text-dim);font-size:0.8rem;line-height:1.7;max-width:460px;margin:0 auto">Projects fund a <strong style="color:var(--cyan)">credit pool</strong>. When tasks are created, rewards are <strong style="color:var(--yellow)">escrowed</strong> from the pool. When validators approve your work, credits are <strong style="color:var(--green)">released</strong> to your balance. Reputation tiers unlock higher-value tasks: Newcomer &rarr; Contributor (100) &rarr; Builder (500) &rarr; Architect (2000).</div>
+      </div>
+    </div>`;
     return;
   }
 
@@ -1100,13 +1329,23 @@ function renderTaskCards(filter) {
   const board = document.getElementById('task-board');
   const filtered = filter === 'all' ? S.tasks : S.tasks.filter(t => t.status === filter);
   if (!filtered.length) { board.innerHTML = '<div style="color:var(--text-dim);padding:16px;grid-column:1/-1;font-size:0.8rem">No tasks with status "' + filter + '"</div>'; return; }
-  board.innerHTML = filtered.map(t => `
-    <div class="task-card" onclick="openModal('task-detail','${t.id}')">
+  board.innerHTML = filtered.map(t => {
+    const canClaim = S.currentAgent && t.status === 'open' && (!t.minReputation || (agent(S.currentAgent) && agent(S.currentAgent).reputation >= t.minReputation));
+    const isMine = t.assignedAgent === S.currentAgent;
+    return `<div class="task-card" onclick="openModal('task-detail','${t.id}')">
       <div class="tc-title">${esc(t.title)}</div>
-      <div class="tc-mod">${esc(t.module)} / ${t.template.replace(/_/g,' ')}</div>
+      <div class="tc-mod">${esc(t.module)} / ${t.template.replace(/_/g,' ')}${t.assignedAgent ? ' &middot; ' + esc(agentName(t.assignedAgent)) : ''}</div>
       <div class="tc-tags">${t.tags.map(x => '<span class="tag">'+esc(x)+'</span>').join('')}</div>
-      <div class="tc-foot">${chip(t.status)}<span class="reward">${t.creditReward} cr</span></div>
-    </div>`).join('');
+      <div class="tc-foot">
+        ${chip(t.status)}
+        <div style="display:flex;gap:6px;align-items:center">
+          ${canClaim ? '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();doClaim(\'' + t.id + '\')">Claim</button>' : ''}
+          ${isMine && t.status === 'claimed' ? '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openModal(\'submit-work\',\'' + t.id + '\')">Submit</button>' : ''}
+          <span class="reward">${t.creditReward} cr</span>
+        </div>
+      </div>
+    </div>`
+  }).join('');
 }
 
 function renderAgentsPage() {
@@ -1260,19 +1499,59 @@ function renderAll() {
 
 renderAll();
 
-// Auto-reconnect wallet on page load
+// Wallet event listeners + auto-reconnect
 (async function() {
-  if (S.walletAddress) {
-    const provider = getProvider();
-    if (provider) {
+  const provider = getProvider();
+  if (provider) {
+    // Listen for account changes (user switches wallet account)
+    provider.on && provider.on('accountChanged', (pubkey) => {
+      if (pubkey) {
+        const newAddr = pubkey.toString();
+        S.walletAddress = newAddr;
+        if (S.currentAgent) {
+          const a = agent(S.currentAgent);
+          if (a) a.walletAddress = newAddr;
+        }
+        // Check if another agent has this wallet
+        const existing = S.agents.find(a => a.walletAddress === newAddr && a.id !== S.currentAgent);
+        if (existing) {
+          S.currentAgent = existing.id;
+          toast('Switched to ' + existing.name);
+        }
+        saveState(); renderAll();
+      } else {
+        // Disconnected
+        S.walletAddress = null;
+        saveState(); updateWalletUI();
+        toast('Wallet disconnected');
+      }
+    });
+
+    // Listen for disconnect
+    provider.on && provider.on('disconnect', () => {
+      S.walletAddress = null;
+      saveState(); updateWalletUI();
+    });
+
+    // Auto-reconnect if previously connected
+    if (S.walletAddress) {
       try {
         const resp = await provider.connect({ onlyIfTrusted: true });
-        if (resp.publicKey.toString() !== S.walletAddress) {
-          S.walletAddress = resp.publicKey.toString();
+        const addr = resp.publicKey.toString();
+        if (addr !== S.walletAddress) {
+          S.walletAddress = addr;
+          if (S.currentAgent) {
+            const a = agent(S.currentAgent);
+            if (a) a.walletAddress = addr;
+          }
           saveState();
         }
         updateWalletUI();
-      } catch(e) { /* silent — user will reconnect manually */ }
+      } catch(e) {
+        // User hasn't pre-approved — clear stored address to avoid stale state
+        // Keep currentAgent so they don't lose their session
+        updateWalletUI();
+      }
     }
   }
 })();
