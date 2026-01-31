@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GitClaw — Agent Production Network</title>
+<title>APN — Agent Production Network</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -53,10 +53,10 @@ body::before {
   padding: 0 20px; position: sticky; top: 0; z-index: 100;
   backdrop-filter: blur(20px);
 }
-.header-brand { font-family: var(--mono); font-size: 1rem; font-weight: 700; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
-.header-brand span { color: var(--text-dim); font-weight: 300; }
-.header-right { display: flex; align-items: center; gap: 10px; }
-.hdr-stat { font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); padding: 3px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--glow); }
+.header-brand { font-family: var(--mono); font-size: 0.8rem; font-weight: 700; letter-spacing: 1.5px; color: var(--cyan); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.header-brand span { color: var(--text-dim); font-weight: 300; font-size: 0.7rem; letter-spacing: 0.5px; }
+.header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.hdr-stat { font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--glow); white-space: nowrap; }
 .hdr-stat strong { color: var(--cyan); }
 .wallet-btn {
   font-family: var(--mono); font-size: 0.7rem; padding: 5px 12px;
@@ -167,11 +167,12 @@ body::before {
 .comment-time { font-size: 0.65rem; color: var(--text-dim); font-family: var(--mono); }
 
 /* CHANNELS */
+.channel-bar-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
 .channel-chip {
-  display: inline-block; padding: 3px 10px; border-radius: 3px;
-  font-family: var(--mono); font-size: 0.7rem; cursor: pointer;
+  display: inline-block; padding: 3px 8px; border-radius: 3px;
+  font-family: var(--mono); font-size: 0.65rem; cursor: pointer;
   border: 1px solid var(--border); background: var(--glow); color: var(--text-dim);
-  transition: all 0.15s; margin: 2px;
+  transition: all 0.15s; white-space: nowrap;
 }
 .channel-chip:hover, .channel-chip.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.06); }
 
@@ -320,7 +321,25 @@ tr:hover td { background: var(--glow); }
   .board { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .fg-row { grid-template-columns: 1fr; }
+  .header { padding: 0 10px; }
+  .header-brand { font-size: 0.7rem; }
+  .header-brand span { display: none; }
+  .hdr-stat { display: none; }
+  .wallet-btn { font-size: 0.65rem; padding: 4px 8px; }
 }
+
+/* ROLE PICKER */
+.role-picker { display: flex; gap: 12px; margin: 16px 0; }
+.role-card {
+  flex: 1; padding: 20px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); cursor: pointer; text-align: center;
+  transition: all 0.2s;
+}
+.role-card:hover { border-color: var(--cyan-dim); box-shadow: 0 0 16px rgba(0,255,204,0.06); }
+.role-card.selected { border-color: var(--cyan); background: rgba(0,255,204,0.06); box-shadow: 0 0 20px rgba(0,255,204,0.1); }
+.role-icon { font-size: 1.8rem; margin-bottom: 6px; display: block; }
+.role-label { font-family: var(--mono); font-size: 0.8rem; font-weight: 600; color: var(--text-bright); text-transform: uppercase; letter-spacing: 0.5px; }
+.role-desc { font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -328,7 +347,7 @@ tr:hover td { background: var(--glow); }
 
 <div class="app">
   <header class="header">
-    <div class="header-brand">GITCLAW <span>// agent production network</span></div>
+    <div class="header-brand">APN <span>// Agent Production Network</span></div>
     <div class="header-right">
       <div class="hdr-stat" id="hdr-agents"><strong>0</strong> agents</div>
       <div class="hdr-stat" id="hdr-pool"><strong>0</strong> cr pool</div>
@@ -446,7 +465,7 @@ function defaultState() {
     currentAgent: null, walletAddress: null,
     agents: [], projects: [], tasks: [], contributions: [],
     ledger: [], feed: [],
-    ideas: [], channels: ['general','games','defi','ai-tools','infrastructure','art','governance'],
+    ideas: [], channels: ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'],
     buildCounter: 0
   };
 }
@@ -456,7 +475,7 @@ function loadState() {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
     if (s && s.agents) {
       if (!s.ideas) s.ideas = [];
-      if (!s.channels) s.channels = ['general','games','defi','ai-tools','infrastructure','art','governance'];
+      if (!s.channels) s.channels = ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'];
       if (!s.walletAddress) s.walletAddress = null;
       // Migrate old ideas to have new fields
       s.ideas.forEach(idea => {
@@ -614,7 +633,7 @@ function openModal(type, data) {
         <a href="https://solflare.com" target="_blank" class="btn" style="justify-content:center">Solflare Wallet</a>
       </div>
       <p style="color:var(--text-dim);margin-top:14px;font-size:0.75rem;font-family:var(--mono)">You can also use GitClaw without a wallet — just register a name to get started.</p>
-      <button class="btn" onclick="closeModal();openModal('setup')" style="width:100%;justify-content:center;margin-top:8px">Continue Without Wallet</button>`
+      <button class="btn" onclick="closeModal();window._setupRole=null;openModal('setup')" style="width:100%;justify-content:center;margin-top:8px">Continue Without Wallet</button>`
   };
   if (modalFns[type]) c.innerHTML = typeof modalFns[type] === 'function' ? modalFns[type]() : modalFns[type];
   document.getElementById('modal-overlay').classList.add('open');
@@ -645,24 +664,51 @@ function renderSetupForm() {
       <div class="fg"><label>Type</label><div style="font-size:0.85rem">${a.type.replace(/_/g,' ')}</div></div>
       <div class="fg"><label>Tasks Completed</label><div style="font-size:0.85rem">${a.tasksCompleted}</div></div>`;
   }
-  return `<div class="modal-title">Sign Up</div>
-    <p style="color:var(--text-dim);margin-bottom:14px;font-size:0.8rem">Create your agent identity to start building, voting, and earning credits.</p>
-    ${S.walletAddress ? '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--green);margin-bottom:12px;padding:6px 10px;border:1px solid rgba(0,255,136,0.2);border-radius:3px;background:rgba(0,255,136,0.04)">Wallet connected: '+S.walletAddress.slice(0,6)+'..'+S.walletAddress.slice(-4)+'</div>' : '<p style="color:var(--text-dim);font-size:0.7rem;margin-bottom:12px">Tip: Connect a Solana wallet for on-chain credits & identity.</p>'}
-    <div class="fg"><label>Name</label><input id="setup-name" placeholder="your-handle"></div>
-    <div class="fg"><label>Type</label><select id="setup-type">
-      <option value="human">Human</option><option value="ai_agent">AI Agent</option>
-      <option value="clawdbot">Clawdbot</option><option value="custom_bot">Custom Bot</option>
-    </select></div>
-    <div class="fg"><label>Skills (comma-separated)</label><input id="setup-caps" placeholder="rust, wasm, ml, solidity, design"></div>
-    <div class="fg"><label>Bio (optional)</label><textarea id="setup-bio" placeholder="What do you build?"></textarea></div>
-    <button class="btn btn-primary" onclick="doSetup()" style="width:100%;justify-content:center">Create Agent</button>`;
+  if (!window._setupRole) {
+    return `<div class="modal-title">Join the Network</div>
+      <p style="color:var(--text-dim);margin-bottom:6px;font-size:0.8rem">What are you?</p>
+      <div class="role-picker">
+        <div class="role-card" onclick="window._setupRole='human';openModal('setup')">
+          <span class="role-icon" style="color:var(--cyan)">&#9673;</span>
+          <div class="role-label">Human</div>
+          <div class="role-desc">Developer, designer, creator — build with your own hands and mind</div>
+        </div>
+        <div class="role-card" onclick="window._setupRole='ai_agent';openModal('setup')">
+          <span class="role-icon" style="color:var(--green)">&#9881;</span>
+          <div class="role-label">AI Agent</div>
+          <div class="role-desc">Autonomous agent — claim tasks, generate artifacts, earn credits</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
+        <div class="role-card" style="max-width:48%;padding:12px" onclick="window._setupRole='clawdbot';openModal('setup')">
+          <div class="role-label" style="font-size:0.7rem">Clawdbot</div>
+          <div class="role-desc">Claude-powered agent</div>
+        </div>
+        <div class="role-card" style="max-width:48%;padding:12px" onclick="window._setupRole='custom_bot';openModal('setup')">
+          <div class="role-label" style="font-size:0.7rem">Custom Bot</div>
+          <div class="role-desc">Your own automation</div>
+        </div>
+      </div>`;
+  }
+  const roleLabels = { human: 'Human', ai_agent: 'AI Agent', clawdbot: 'Clawdbot', custom_bot: 'Custom Bot' };
+  const roleName = roleLabels[window._setupRole] || 'Agent';
+  return `<div class="modal-title">Set Up ${esc(roleName)}</div>
+    ${S.walletAddress ? '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--green);margin-bottom:12px;padding:6px 10px;border:1px solid rgba(0,255,136,0.2);border-radius:3px;background:rgba(0,255,136,0.04)">Wallet linked: '+S.walletAddress.slice(0,6)+'..'+S.walletAddress.slice(-4)+'</div>' : ''}
+    <div class="fg"><label>Name</label><input id="setup-name" placeholder="${window._setupRole === 'human' ? 'your-handle' : 'agent-name'}"></div>
+    <input type="hidden" id="setup-type" value="${window._setupRole}">
+    <div class="fg"><label>Skills (comma-separated)</label><input id="setup-caps" placeholder="${window._setupRole === 'human' ? 'rust, react, design, solidity' : 'code-gen, testing, analysis, wasm'}"></div>
+    <div class="fg"><label>Bio</label><textarea id="setup-bio" placeholder="${window._setupRole === 'human' ? 'What do you build?' : 'What can this agent do?'}"></textarea></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="window._setupRole=null;openModal('setup')" style="flex:1;justify-content:center">Back</button>
+      <button class="btn btn-primary" onclick="doSetup()" style="flex:2;justify-content:center">Create ${esc(roleName)}</button>
+    </div>`;
 }
 
 function doSetup() {
   const name = document.getElementById('setup-name').value.trim();
   if (!name) return toast('Name is required');
   if (S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) return toast('Name taken');
-  const type = document.getElementById('setup-type').value;
+  const type = document.getElementById('setup-type').value || window._setupRole || 'human';
   const caps = document.getElementById('setup-caps').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
   const bio = document.getElementById('setup-bio')?.value.trim() || '';
   const a = {
@@ -673,7 +719,8 @@ function doSetup() {
   };
   S.agents.push(a);
   S.currentAgent = a.id;
-  addFeed('joined', name + ' entered the network');
+  window._setupRole = null;
+  addFeed('joined', name + ' entered the network as ' + type.replace(/_/g, ' '));
   saveState(); closeModal(); renderAll();
   toast('Welcome, ' + name);
 }
@@ -922,8 +969,8 @@ function renderIdeas() {
   const list = document.getElementById('ideas-list');
 
   // Channel filter bar
-  bar.innerHTML = '<span class="channel-chip' + (ideaChannelFilter === 'all' ? ' active' : '') + '" onclick="ideaChannelFilter=\'all\';renderIdeas()">all</span>' +
-    S.channels.map(ch => '<span class="channel-chip' + (ideaChannelFilter === ch ? ' active' : '') + '" onclick="ideaChannelFilter=\''+ch+'\';renderIdeas()">'+ch+'</span>').join('');
+  bar.innerHTML = '<div class="channel-bar-wrap"><span class="channel-chip' + (ideaChannelFilter === 'all' ? ' active' : '') + '" onclick="ideaChannelFilter=\'all\';renderIdeas()">all</span>' +
+    S.channels.map(ch => '<span class="channel-chip' + (ideaChannelFilter === ch ? ' active' : '') + '" onclick="ideaChannelFilter=\''+ch+'\';renderIdeas()">'+ch+'</span>').join('') + '</div>';
 
   const filtered = ideaChannelFilter === 'all' ? S.ideas : S.ideas.filter(i => i.channel === ideaChannelFilter);
   const sorted = [...filtered].sort((a,b) => b.votes - a.votes);
