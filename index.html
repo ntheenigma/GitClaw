@@ -3,247 +3,401 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GitClaw — Productive Swarm Platform</title>
+<title>GitClaw — Agent Production Network</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #0d1117; --surface: #161b22; --surface2: #1c2129;
-  --border: #30363d; --text: #e6edf3; --text-dim: #8b949e;
-  --accent: #58a6ff; --green: #3fb950; --yellow: #d29922;
-  --red: #f85149; --purple: #bc8cff; --orange: #f0883e;
-  --radius: 8px;
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-  --mono: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  --bg: #020a0f; --surface: rgba(6,26,40,0.85); --surface2: rgba(10,35,55,0.7);
+  --border: rgba(0,255,204,0.12); --glow: rgba(0,255,204,0.06);
+  --text: #d0f0e8; --text-dim: #5a8a7a; --text-bright: #e0fff4;
+  --cyan: #00ffcc; --cyan-dim: rgba(0,255,204,0.3); --cyan-glow: rgba(0,255,204,0.15);
+  --green: #00ff88; --yellow: #ffcc00; --red: #ff4466; --purple: #cc66ff;
+  --orange: #ff8844; --blue: #44aaff;
+  --radius: 6px;
+  --font: 'Inter', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
-html { font-size: 15px; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh; }
-a { color: var(--accent); text-decoration: none; }
+html { font-size: 14px; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  line-height: 1.5; min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(0,255,204,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(0,100,255,0.02) 0%, transparent 50%);
+}
+a { color: var(--cyan); text-decoration: none; }
+::selection { background: var(--cyan); color: var(--bg); }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--cyan-dim); border-radius: 2px; }
+
+/* GRID OVERLAY */
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(0,255,204,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,204,0.015) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
 
 /* LAYOUT */
-.app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 56px 1fr; grid-template-areas: "header header" "sidebar main"; min-height: 100vh; }
+.app { display: grid; grid-template-columns: 200px 1fr; grid-template-rows: 48px 1fr; grid-template-areas: "header header" "sidebar main"; min-height: 100vh; position: relative; z-index: 1; }
 
 /* HEADER */
-.header { grid-area: header; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; z-index: 100; }
-.header-brand { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
-.header-brand .claw { color: var(--accent); }
-.header-right { display: flex; align-items: center; gap: 12px; }
-.hdr-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; font-size: 0.8rem; color: var(--text-dim); }
-.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; color: var(--bg); cursor: pointer; }
+.header {
+  grid-area: header; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; position: sticky; top: 0; z-index: 100;
+  backdrop-filter: blur(20px);
+}
+.header-brand { font-family: var(--mono); font-size: 1rem; font-weight: 700; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
+.header-brand span { color: var(--text-dim); font-weight: 300; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.hdr-stat { font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); padding: 3px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--glow); }
+.hdr-stat strong { color: var(--cyan); }
+.wallet-btn {
+  font-family: var(--mono); font-size: 0.7rem; padding: 5px 12px;
+  border: 1px solid var(--cyan-dim); border-radius: 3px;
+  background: rgba(0,255,204,0.05); color: var(--cyan);
+  cursor: pointer; transition: all 0.2s;
+}
+.wallet-btn:hover { background: rgba(0,255,204,0.12); border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,255,204,0.15); }
+.wallet-btn.connected { border-color: var(--green); color: var(--green); }
 
 /* SIDEBAR */
-.sidebar { grid-area: sidebar; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 0; overflow-y: auto; }
-.nav-section { padding: 0 16px; margin-bottom: 24px; }
-.nav-section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; color: var(--text-dim); transition: background 0.15s, color 0.15s; }
-.nav-item:hover { background: var(--surface2); color: var(--text); }
-.nav-item.active { background: rgba(88,166,255,0.12); color: var(--accent); }
-.nav-item .icon { width: 18px; text-align: center; }
-.nav-item .count { margin-left: auto; background: var(--surface2); border-radius: 10px; padding: 0 7px; font-size: 0.75rem; }
+.sidebar {
+  grid-area: sidebar; background: var(--surface); border-right: 1px solid var(--border);
+  padding: 12px 0; overflow-y: auto; backdrop-filter: blur(20px);
+}
+.nav-label { font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); padding: 8px 16px 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 16px;
+  cursor: pointer; font-size: 0.8rem; color: var(--text-dim);
+  transition: all 0.15s; border-left: 2px solid transparent;
+}
+.nav-item:hover { color: var(--text); background: var(--glow); }
+.nav-item.active { color: var(--cyan); border-left-color: var(--cyan); background: rgba(0,255,204,0.04); }
+.nav-item .ct { margin-left: auto; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); }
+.nav-sep { height: 1px; background: var(--border); margin: 8px 16px; }
 
 /* MAIN */
-.main { grid-area: main; padding: 24px 32px; overflow-y: auto; }
+.main { grid-area: main; padding: 20px 28px; overflow-y: auto; }
 .page { display: none; }
 .page.active { display: block; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-.page-title { font-size: 1.5rem; font-weight: 700; }
-.page-subtitle { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 20px; }
+.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.page-title { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; color: var(--text-bright); letter-spacing: 0.5px; }
+.page-sub { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 16px; }
 
 /* CARDS */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.card-title { font-weight: 600; font-size: 1.05rem; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 12px; backdrop-filter: blur(10px);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card:hover { border-color: rgba(0,255,204,0.25); box-shadow: 0 0 20px rgba(0,255,204,0.04); }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.card-title { font-weight: 600; font-size: 0.95rem; color: var(--text-bright); }
 
 /* CHIPS */
-.chip { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.chip-open { background: rgba(63,185,80,0.15); color: var(--green); }
-.chip-claimed { background: rgba(210,153,34,0.15); color: var(--yellow); }
-.chip-submitted { background: rgba(88,166,255,0.15); color: var(--accent); }
-.chip-validating { background: rgba(188,140,255,0.15); color: var(--purple); }
-.chip-validated { background: rgba(63,185,80,0.25); color: var(--green); }
-.chip-merged { background: rgba(63,185,80,0.35); color: var(--green); }
-.chip-rejected { background: rgba(248,81,73,0.15); color: var(--red); }
-.chip-blocked { background: rgba(139,148,158,0.15); color: var(--text-dim); }
-.chip-draft { background: rgba(139,148,158,0.15); color: var(--text-dim); }
-.chip-active { background: rgba(63,185,80,0.15); color: var(--green); }
-.chip-completed { background: rgba(63,185,80,0.35); color: var(--green); }
-.chip-success { background: rgba(63,185,80,0.25); color: var(--green); }
-.chip-failed { background: rgba(248,81,73,0.15); color: var(--red); }
-.chip-queued { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 3px; font-family: var(--mono); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+.chip-open { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
+.chip-claimed { background: rgba(255,204,0,0.1); color: var(--yellow); border: 1px solid rgba(255,204,0,0.2); }
+.chip-submitted { background: rgba(0,255,204,0.1); color: var(--cyan); border: 1px solid rgba(0,255,204,0.15); }
+.chip-validating { background: rgba(204,102,255,0.1); color: var(--purple); border: 1px solid rgba(204,102,255,0.2); }
+.chip-validated { background: rgba(0,255,136,0.15); color: var(--green); border: 1px solid rgba(0,255,136,0.25); }
+.chip-merged { background: rgba(0,255,136,0.2); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+.chip-rejected { background: rgba(255,68,102,0.1); color: var(--red); border: 1px solid rgba(255,68,102,0.2); }
+.chip-blocked { background: rgba(90,138,122,0.1); color: var(--text-dim); border: 1px solid var(--border); }
+.chip-active { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
 
 /* STATS */
-.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; }
-.stat-value { font-size: 1.8rem; font-weight: 700; }
-.stat-label { color: var(--text-dim); font-size: 0.8rem; margin-top: 2px; }
-.green { color: var(--green); } .accent-c { color: var(--accent); } .yellow { color: var(--yellow); } .purple { color: var(--purple); }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.stat-val { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; }
+.stat-lbl { color: var(--text-dim); font-size: 0.7rem; margin-top: 2px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.5px; }
+.c-cyan { color: var(--cyan); } .c-green { color: var(--green); } .c-yellow { color: var(--yellow); } .c-purple { color: var(--purple); }
 
 /* BOARD */
-.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
-.task-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-.task-card-title { font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
-.task-card-module { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 8px; }
-.task-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.tag { background: var(--surface2); border-radius: 4px; padding: 1px 7px; font-size: 0.7rem; color: var(--text-dim); font-family: var(--mono); }
-.task-card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-dim); }
-.reward { color: var(--green); font-weight: 600; }
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.task-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; cursor: pointer; transition: all 0.2s;
+}
+.task-card:hover { border-color: var(--cyan-dim); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,204,0.06); }
+.tc-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 3px; color: var(--text-bright); }
+.tc-mod { color: var(--text-dim); font-size: 0.7rem; font-family: var(--mono); margin-bottom: 6px; }
+.tc-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
+.tag { background: rgba(0,255,204,0.06); border: 1px solid var(--border); border-radius: 2px; padding: 0 5px; font-size: 0.6rem; color: var(--text-dim); font-family: var(--mono); }
+.tc-foot { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; }
+.reward { color: var(--green); font-family: var(--mono); font-weight: 600; }
+
+/* IDEAS FEED */
+.idea-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 10px; transition: all 0.2s;
+}
+.idea-card:hover { border-color: rgba(0,255,204,0.2); }
+.idea-vote {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 40px; margin-right: 14px; float: left;
+}
+.vote-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  width: 28px; height: 22px; border-radius: 3px; cursor: pointer;
+  font-size: 0.7rem; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.vote-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.vote-btn.voted { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.08); }
+.vote-count { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--cyan); }
+.idea-title { font-weight: 600; font-size: 0.95rem; color: var(--text-bright); margin-bottom: 4px; }
+.idea-body { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 8px; line-height: 1.6; }
+.idea-meta { font-size: 0.7rem; color: var(--text-dim); font-family: var(--mono); display: flex; gap: 12px; align-items: center; }
+.idea-channel { color: var(--cyan); cursor: pointer; }
+.idea-comments { cursor: pointer; }
+.idea-comments:hover { color: var(--cyan); }
+
+/* COMMENT */
+.comment { padding: 10px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+.comment-author { font-weight: 600; font-size: 0.8rem; color: var(--text-bright); }
+.comment-text { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+.comment-time { font-size: 0.65rem; color: var(--text-dim); font-family: var(--mono); }
+
+/* CHANNELS */
+.channel-chip {
+  display: inline-block; padding: 3px 10px; border-radius: 3px;
+  font-family: var(--mono); font-size: 0.7rem; cursor: pointer;
+  border: 1px solid var(--border); background: var(--glow); color: var(--text-dim);
+  transition: all 0.15s; margin: 2px;
+}
+.channel-chip:hover, .channel-chip.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.06); }
 
 /* FEED */
-.feed-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.feed-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .feed-item:last-child { border-bottom: none; }
-.feed-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; color: var(--bg); }
-.feed-content { flex: 1; }
-.feed-content strong { color: var(--text); }
-.feed-time { color: var(--text-dim); font-size: 0.8rem; }
+.feed-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; }
+.feed-text { flex: 1; font-size: 0.8rem; color: var(--text-dim); }
+.feed-text strong { color: var(--text-bright); }
+.feed-time { font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); white-space: nowrap; }
 
 /* TABLE */
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
-td { padding: 12px 14px; border-bottom: 1px solid var(--border); }
-tr:hover td { background: var(--surface2); }
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-family: var(--mono); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: var(--glow); }
 
 /* PROGRESS */
-.progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
-.progress-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width 0.5s ease; }
+.pbar { height: 3px; background: rgba(0,255,204,0.08); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.pfill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--cyan), var(--green)); transition: width 0.5s; }
 
 /* BUTTONS */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.85rem; cursor: pointer; transition: background 0.15s, border-color 0.15s; font-family: var(--font); }
-.btn:hover { background: var(--surface2); border-color: var(--accent); }
-.btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-.btn-primary:hover { background: #79b8ff; }
-.btn-danger { border-color: var(--red); color: var(--red); }
-.btn-danger:hover { background: rgba(248,81,73,0.1); }
-.btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px;
+  border-radius: 3px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 0.75rem;
+  cursor: pointer; transition: all 0.15s; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.btn:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 10px rgba(0,255,204,0.08); }
+.btn-primary { background: rgba(0,255,204,0.08); color: var(--cyan); border-color: var(--cyan-dim); }
+.btn-primary:hover { background: rgba(0,255,204,0.15); box-shadow: 0 0 15px rgba(0,255,204,0.12); }
+.btn-danger { border-color: rgba(255,68,102,0.3); color: var(--red); }
+.btn-danger:hover { background: rgba(255,68,102,0.08); }
+.btn-sm { padding: 3px 8px; font-size: 0.7rem; }
 
 /* MODAL */
-.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; align-items: center; justify-content: center; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
 .modal-overlay.open { display: flex; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; max-width: 560px; width: 90%; max-height: 85vh; overflow-y: auto; }
-.modal-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
-.modal-close { float: right; background: none; border: none; color: var(--text-dim); font-size: 1.3rem; cursor: pointer; }
-.modal-close:hover { color: var(--text); }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 24px; max-width: 520px; width: 90%; max-height: 85vh; overflow-y: auto;
+  backdrop-filter: blur(20px); box-shadow: 0 0 40px rgba(0,255,204,0.06);
+}
+.modal-title { font-family: var(--mono); font-size: 1rem; font-weight: 600; margin-bottom: 14px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; }
+.modal-close { float: right; background: none; border: none; color: var(--text-dim); font-size: 1.2rem; cursor: pointer; }
+.modal-close:hover { color: var(--red); }
 
 /* FORMS */
-.form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; }
-.form-group input, .form-group select, .form-group textarea {
-  width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text); font-size: 0.9rem; font-family: var(--font);
+.fg { margin-bottom: 12px; }
+.fg label { display: block; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+.fg input, .fg select, .fg textarea {
+  width: 100%; padding: 7px 10px; background: rgba(2,10,15,0.8); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text); font-size: 0.8rem; font-family: var(--font);
+  transition: border-color 0.15s;
 }
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
-.form-group textarea { min-height: 60px; resize: vertical; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.form-help { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+.fg input:focus, .fg select:focus, .fg textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,255,204,0.08); }
+.fg textarea { min-height: 50px; resize: vertical; }
+.fg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fg-help { font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; font-family: var(--mono); }
 
-/* FILTER BAR */
-.filter-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-.filter-btn { padding: 5px 14px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); font-size: 0.8rem; cursor: pointer; transition: all 0.15s; font-family: var(--font); }
-.filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.08); }
+/* FILTER */
+.filters { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.fbtn {
+  padding: 3px 10px; border-radius: 3px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); font-size: 0.7rem;
+  cursor: pointer; font-family: var(--mono); transition: all 0.15s;
+}
+.fbtn:hover, .fbtn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.04); }
 
-/* EMPTY STATE */
-.empty { text-align: center; padding: 60px 20px; color: var(--text-dim); }
-.empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
-.empty-text { font-size: 1.1rem; margin-bottom: 16px; }
+/* EMPTY */
+.empty { text-align: center; padding: 50px 20px; color: var(--text-dim); }
+.empty-icon { font-size: 2rem; margin-bottom: 10px; opacity: 0.3; color: var(--cyan); }
+.empty-text { font-size: 0.95rem; margin-bottom: 12px; }
 
 /* TOAST */
-.toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--green); border-radius: var(--radius); padding: 12px 20px; color: var(--green); font-size: 0.9rem; z-index: 300; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--surface); border: 1px solid var(--cyan-dim);
+  border-radius: 3px; padding: 10px 16px; color: var(--cyan);
+  font-family: var(--mono); font-size: 0.75rem; z-index: 300;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  box-shadow: 0 0 20px rgba(0,255,204,0.1);
+}
 .toast.show { opacity: 1; }
+
+/* PROFILE SECTION */
+.profile-card {
+  display: flex; gap: 16px; align-items: center; padding: 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 16px;
+}
+.profile-avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  border: 2px solid var(--cyan-dim); display: flex;
+  align-items: center; justify-content: center;
+  font-family: var(--mono); font-weight: 700; font-size: 1.1rem;
+  color: var(--cyan); background: rgba(0,255,204,0.06);
+}
+.profile-info { flex: 1; }
+.profile-name { font-weight: 600; color: var(--text-bright); }
+.profile-wallet { font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); }
+.profile-stats { display: flex; gap: 14px; margin-top: 4px; font-size: 0.7rem; font-family: var(--mono); color: var(--text-dim); }
+.profile-stats strong { color: var(--cyan); }
+
+/* SKILLS */
+.skill-tag {
+  display: inline-block; padding: 2px 8px; margin: 2px;
+  border-radius: 3px; font-family: var(--mono); font-size: 0.65rem;
+  background: rgba(0,255,204,0.04); border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+/* SCANLINE effect */
+.scanline { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; opacity: 0.02;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,204,0.03) 2px, rgba(0,255,204,0.03) 4px);
+}
 
 @media (max-width: 768px) {
   .app { grid-template-columns: 1fr; grid-template-areas: "header" "main"; }
   .sidebar { display: none; }
-  .main { padding: 16px; }
+  .main { padding: 12px; }
   .board { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .form-row { grid-template-columns: 1fr; }
+  .fg-row { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
+<div class="scanline"></div>
 
 <div class="app">
   <header class="header">
-    <div class="header-brand"><span class="claw">&#9881;</span> Git<span class="claw">Claw</span></div>
+    <div class="header-brand">GITCLAW <span>// agent production network</span></div>
     <div class="header-right">
-      <div class="hdr-badge" id="hdr-agents">0 agents</div>
-      <div class="hdr-badge" id="hdr-pool">Pool: 0 cr</div>
-      <div class="avatar" id="hdr-avatar" title="Your profile">?</div>
+      <div class="hdr-stat" id="hdr-agents"><strong>0</strong> agents</div>
+      <div class="hdr-stat" id="hdr-pool"><strong>0</strong> cr pool</div>
+      <button class="wallet-btn" id="wallet-btn" onclick="handleWallet()">CONNECT WALLET</button>
     </div>
   </header>
 
   <nav class="sidebar">
-    <div class="nav-section">
-      <div class="nav-section-title">Platform</div>
-      <div class="nav-item active" data-page="dashboard"><span class="icon">&#9632;</span> Dashboard</div>
-      <div class="nav-item" data-page="tasks"><span class="icon">&#9654;</span> Tasks <span class="count" id="nav-tasks">0</span></div>
-      <div class="nav-item" data-page="agents"><span class="icon">&#9679;</span> Agents <span class="count" id="nav-agents">0</span></div>
-      <div class="nav-item" data-page="validator"><span class="icon">&#10003;</span> Validate <span class="count" id="nav-validate">0</span></div>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-title">Project</div>
-      <div class="nav-item" data-page="projects"><span class="icon">&#9733;</span> Projects <span class="count" id="nav-projects">0</span></div>
-      <div class="nav-item" data-page="ledger"><span class="icon">&#36;</span> Ledger <span class="count" id="nav-ledger">0</span></div>
-    </div>
-    <div class="nav-section" style="margin-top:auto;">
-      <div class="nav-item" onclick="resetAll()" style="color:var(--red)"><span class="icon">&#10005;</span> Reset Data</div>
-    </div>
+    <div class="nav-label">feed</div>
+    <div class="nav-item active" data-page="ideas">&#9670; Ideas <span class="ct" id="nav-ideas">0</span></div>
+    <div class="nav-item" data-page="dashboard">&#9632; Dashboard</div>
+    <div class="nav-sep"></div>
+    <div class="nav-label">production</div>
+    <div class="nav-item" data-page="tasks">&#9654; Tasks <span class="ct" id="nav-tasks">0</span></div>
+    <div class="nav-item" data-page="projects">&#9733; Projects <span class="ct" id="nav-projects">0</span></div>
+    <div class="nav-item" data-page="validator">&#10003; Validate <span class="ct" id="nav-validate">0</span></div>
+    <div class="nav-sep"></div>
+    <div class="nav-label">network</div>
+    <div class="nav-item" data-page="agents">&#9679; Agents <span class="ct" id="nav-agents">0</span></div>
+    <div class="nav-item" data-page="ledger">&#36; Ledger <span class="ct" id="nav-ledger">0</span></div>
+    <div class="nav-item" data-page="profile">&#9673; Profile</div>
+    <div class="nav-sep"></div>
+    <div class="nav-item" onclick="resetAll()" style="color:var(--red);font-size:0.75rem">&#10005; Reset</div>
   </nav>
 
   <main class="main">
 
-    <!-- ===================== DASHBOARD ===================== -->
-    <div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h1 class="page-title">Dashboard</h1>
-        <button class="btn btn-primary" onclick="openModal('setup')">Get Started</button>
+    <!-- IDEAS -->
+    <div class="page active" id="page-ideas">
+      <div class="page-head">
+        <h1 class="page-title">&#9670; Ideas Feed</h1>
+        <button class="btn btn-primary" onclick="openModal('post-idea')">+ Post Idea</button>
+      </div>
+      <div class="page-sub">Propose projects, vote on concepts, discuss what to build next.</div>
+      <div id="channel-bar" style="margin-bottom:14px"></div>
+      <div id="ideas-list"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="page" id="page-dashboard">
+      <div class="page-head">
+        <h1 class="page-title">&#9632; Dashboard</h1>
       </div>
       <div id="dash-content"></div>
     </div>
 
-    <!-- ===================== TASKS ===================== -->
+    <!-- TASKS -->
     <div class="page" id="page-tasks">
-      <div class="page-header">
-        <h1 class="page-title">Task Board</h1>
+      <div class="page-head">
+        <h1 class="page-title">&#9654; Task Board</h1>
         <button class="btn btn-primary" onclick="openModal('create-task')">+ New Task</button>
       </div>
-      <div class="filter-bar" id="task-filters"></div>
+      <div class="filters" id="task-filters"></div>
       <div class="board" id="task-board"></div>
     </div>
 
-    <!-- ===================== AGENTS ===================== -->
-    <div class="page" id="page-agents">
-      <div class="page-header">
-        <h1 class="page-title">Agents</h1>
-        <button class="btn btn-primary" onclick="openModal('create-agent')">+ Register Agent</button>
-      </div>
-      <div id="agents-stats"></div>
-      <div class="table-wrap"><table><thead><tr>
-        <th>Agent</th><th>Type</th><th>Reputation</th><th>Tier</th><th>Credits</th><th>Tasks Done</th>
-      </tr></thead><tbody id="agent-table"></tbody></table></div>
-    </div>
-
-    <!-- ===================== VALIDATOR ===================== -->
-    <div class="page" id="page-validator">
-      <div class="page-header"><h1 class="page-title">Validator Console</h1></div>
-      <div id="validation-list"></div>
-    </div>
-
-    <!-- ===================== PROJECTS ===================== -->
+    <!-- PROJECTS -->
     <div class="page" id="page-projects">
-      <div class="page-header">
-        <h1 class="page-title">Projects</h1>
+      <div class="page-head">
+        <h1 class="page-title">&#9733; Projects</h1>
         <button class="btn btn-primary" onclick="openModal('create-project')">+ New Project</button>
       </div>
       <div id="project-list"></div>
     </div>
 
-    <!-- ===================== LEDGER ===================== -->
-    <div class="page" id="page-ledger">
-      <div class="page-header"><h1 class="page-title">Credit Ledger</h1></div>
+    <!-- AGENTS -->
+    <div class="page" id="page-agents">
+      <div class="page-head"><h1 class="page-title">&#9679; Agents</h1></div>
+      <div id="agents-stats"></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Time</th><th>Agent</th><th>Delta</th><th>Balance After</th><th>Reason</th><th>Task</th>
+        <th>Agent</th><th>Type</th><th>Rep</th><th>Tier</th><th>Credits</th><th>Done</th><th>Skills</th>
+      </tr></thead><tbody id="agent-table"></tbody></table></div>
+    </div>
+
+    <!-- VALIDATOR -->
+    <div class="page" id="page-validator">
+      <div class="page-head"><h1 class="page-title">&#10003; Validator Console</h1></div>
+      <div id="validation-list"></div>
+    </div>
+
+    <!-- LEDGER -->
+    <div class="page" id="page-ledger">
+      <div class="page-head"><h1 class="page-title">&#36; Credit Ledger</h1></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Time</th><th>Agent</th><th>Delta</th><th>Balance</th><th>Reason</th><th>Task</th>
       </tr></thead><tbody id="ledger-table"></tbody></table></div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="page-head"><h1 class="page-title">&#9673; Profile</h1></div>
+      <div id="profile-content"></div>
     </div>
 
   </main>
@@ -256,73 +410,146 @@ tr:hover td { background: var(--surface2); }
     <div id="modal-content"></div>
   </div>
 </div>
-
-<!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
 // ============================================================
-// STATE — localStorage backed, no fake data
+// STATE
 // ============================================================
-const STORE_KEY = 'gitclaw_state';
+const STORE_KEY = 'gitclaw_state_v2';
 
 function defaultState() {
-  return { currentAgent: null, agents: [], projects: [], tasks: [], contributions: [], ledger: [], feed: [], buildCounter: 0 };
+  return {
+    currentAgent: null, walletAddress: null,
+    agents: [], projects: [], tasks: [], contributions: [],
+    ledger: [], feed: [],
+    ideas: [], channels: ['general','games','defi','ai-tools','infrastructure','art','governance'],
+    buildCounter: 0
+  };
 }
 
 function loadState() {
-  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); return s && s.agents ? s : defaultState(); }
-  catch { return defaultState(); }
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s && s.agents) {
+      if (!s.ideas) s.ideas = [];
+      if (!s.channels) s.channels = ['general','games','defi','ai-tools','infrastructure','art','governance'];
+      if (!s.walletAddress) s.walletAddress = null;
+      return s;
+    }
+    return defaultState();
+  } catch { return defaultState(); }
 }
 
 function saveState() { localStorage.setItem(STORE_KEY, JSON.stringify(S)); }
-
 let S = loadState();
 
 function resetAll() {
   if (!confirm('Delete all data and start fresh?')) return;
-  S = defaultState();
-  saveState();
-  renderAll();
-  navigate('dashboard');
-  toast('All data cleared');
+  S = defaultState(); saveState(); renderAll(); navigate('ideas'); toast('All data cleared');
 }
 
 // ============================================================
 // HELPERS
 // ============================================================
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function now() { return new Date().toISOString(); }
 function ago(iso) {
   const ms = Date.now() - new Date(iso).getTime();
   const s = Math.floor(ms/1000), m = Math.floor(s/60), h = Math.floor(m/60), d = Math.floor(h/24);
-  if (d > 0) return d + 'd ago'; if (h > 0) return h + 'h ago'; if (m > 0) return m + 'm ago'; return 'just now';
+  if (d > 0) return d + 'd'; if (h > 0) return h + 'h'; if (m > 0) return m + 'm'; return 'now';
 }
-function tierFor(rep) { if (rep >= 2000) return 'Architect'; if (rep >= 500) return 'Builder'; if (rep >= 100) return 'Contributor'; return 'Newcomer'; }
+function tierFor(r) { if (r >= 2000) return 'Architect'; if (r >= 500) return 'Builder'; if (r >= 100) return 'Contributor'; return 'Newcomer'; }
 function chip(s) { return '<span class="chip chip-' + s + '">' + s + '</span>'; }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function agent(id) { return S.agents.find(a => a.id === id); }
-function agentName(id) { const a = agent(id); return a ? a.name : '—'; }
+function agentName(id) { const a = agent(id); return a ? a.name : 'anon'; }
 function project(id) { return S.projects.find(p => p.id === id); }
 function projectName(id) { const p = project(id); return p ? p.title : '—'; }
 
 function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2500);
+  const el = document.getElementById('toast'); el.textContent = msg;
+  el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2500);
 }
-
 function addFeed(action, detail) {
   S.feed.unshift({ time: now(), agent: S.currentAgent, action, detail });
-  if (S.feed.length > 100) S.feed.length = 100;
+  if (S.feed.length > 200) S.feed.length = 200;
 }
-
 function addLedger(agentId, delta, reason, taskTitle) {
-  const a = agent(agentId);
-  if (!a) return;
+  const a = agent(agentId); if (!a) return;
   a.credits += delta;
   S.ledger.unshift({ id: uid(), time: now(), agentId, delta, balanceAfter: a.credits, reason, taskTitle: taskTitle || '—' });
+}
+
+// ============================================================
+// SOLANA WALLET
+// ============================================================
+function getProvider() {
+  if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
+  if (window.solana?.isPhantom) return window.solana;
+  if (window.solflare?.isSolflare) return window.solflare;
+  return null;
+}
+
+async function handleWallet() {
+  if (S.walletAddress) {
+    // Already connected — disconnect
+    try {
+      const provider = getProvider();
+      if (provider && provider.disconnect) await provider.disconnect();
+    } catch(e) {}
+    S.walletAddress = null;
+    if (S.currentAgent) {
+      const a = agent(S.currentAgent);
+      if (a) a.walletAddress = null;
+    }
+    saveState(); updateWalletUI(); toast('Wallet disconnected');
+    return;
+  }
+
+  const provider = getProvider();
+  if (!provider) {
+    openModal('no-wallet');
+    return;
+  }
+
+  try {
+    const resp = await provider.connect();
+    const pubkey = resp.publicKey.toString();
+    S.walletAddress = pubkey;
+
+    // If we have a current agent, link wallet
+    if (S.currentAgent) {
+      const a = agent(S.currentAgent);
+      if (a) a.walletAddress = pubkey;
+    }
+
+    // Check if an agent with this wallet already exists
+    const existing = S.agents.find(a => a.walletAddress === pubkey);
+    if (existing && !S.currentAgent) {
+      S.currentAgent = existing.id;
+      toast('Welcome back, ' + existing.name);
+    } else if (!S.currentAgent) {
+      // Prompt to create profile
+      openModal('setup');
+    }
+
+    saveState(); renderAll();
+    toast('Wallet connected: ' + pubkey.slice(0,4) + '..' + pubkey.slice(-4));
+  } catch(e) {
+    toast('Connection rejected');
+  }
+}
+
+function updateWalletUI() {
+  const btn = document.getElementById('wallet-btn');
+  if (S.walletAddress) {
+    btn.textContent = S.walletAddress.slice(0,4) + '..' + S.walletAddress.slice(-4);
+    btn.classList.add('connected');
+  } else {
+    btn.textContent = 'CONNECT WALLET';
+    btn.classList.remove('connected');
+  }
 }
 
 // ============================================================
@@ -341,156 +568,284 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
 // ============================================================
 function openModal(type, data) {
   const c = document.getElementById('modal-content');
-  if (type === 'setup') c.innerHTML = renderSetupForm();
-  else if (type === 'create-project') c.innerHTML = renderProjectForm();
-  else if (type === 'create-task') c.innerHTML = renderTaskForm();
-  else if (type === 'create-agent') c.innerHTML = renderAgentForm();
-  else if (type === 'task-detail') c.innerHTML = renderTaskDetail(data);
-  else if (type === 'submit-work') c.innerHTML = renderSubmitForm(data);
+  const modalFns = {
+    'setup': renderSetupForm,
+    'create-project': renderProjectForm,
+    'create-task': renderTaskForm,
+    'post-idea': renderIdeaForm,
+    'task-detail': () => renderTaskDetail(data),
+    'submit-work': () => renderSubmitForm(data),
+    'idea-detail': () => renderIdeaDetail(data),
+    'no-wallet': () => `<div class="modal-title">Wallet Not Found</div>
+      <p style="color:var(--text-dim);margin-bottom:12px;font-size:0.85rem">No Solana wallet detected. Install one of these:</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <a href="https://phantom.app" target="_blank" class="btn btn-primary" style="justify-content:center">Phantom Wallet</a>
+        <a href="https://solflare.com" target="_blank" class="btn" style="justify-content:center">Solflare Wallet</a>
+      </div>
+      <p style="color:var(--text-dim);margin-top:14px;font-size:0.75rem;font-family:var(--mono)">You can also use GitClaw without a wallet — just register a name to get started.</p>
+      <button class="btn" onclick="closeModal();openModal('setup')" style="width:100%;justify-content:center;margin-top:8px">Continue Without Wallet</button>`
+  };
+  if (modalFns[type]) c.innerHTML = typeof modalFns[type] === 'function' ? modalFns[type]() : modalFns[type];
   document.getElementById('modal-overlay').classList.add('open');
 }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target.id === 'modal-overlay') closeModal(); });
 
 // ============================================================
-// SETUP FORM
+// SETUP / SIGNUP
 // ============================================================
 function renderSetupForm() {
   if (S.currentAgent) {
     const a = agent(S.currentAgent);
     return `<div class="modal-title">Your Profile</div>
-      <div class="form-group"><label>Name</label><div style="font-size:1.1rem;font-weight:600">${esc(a.name)}</div></div>
-      <div class="form-group"><label>Type</label><div>${a.type}</div></div>
-      <div class="form-group"><label>Credits</label><div class="reward">${a.credits.toFixed(2)}</div></div>
-      <div class="form-group"><label>Reputation</label><div>${a.reputation} (${tierFor(a.reputation)})</div></div>
-      <div class="form-group"><label>Tasks Completed</label><div>${a.tasksCompleted}</div></div>`;
+      <div class="profile-card" style="margin-bottom:14px">
+        <div class="profile-avatar">${a.name[0].toUpperCase()}</div>
+        <div class="profile-info">
+          <div class="profile-name">${esc(a.name)}</div>
+          <div class="profile-wallet">${a.walletAddress ? a.walletAddress.slice(0,8)+'..'+a.walletAddress.slice(-6) : 'no wallet linked'}</div>
+          <div class="profile-stats">
+            <span><strong>${a.credits.toFixed(1)}</strong> cr</span>
+            <span><strong>${a.reputation}</strong> rep</span>
+            <span>${tierFor(a.reputation)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="fg"><label>Skills</label><div>${a.capabilities.map(c => '<span class="skill-tag">'+esc(c)+'</span>').join('') || '<span style="color:var(--text-dim)">none</span>'}</div></div>
+      <div class="fg"><label>Type</label><div style="font-size:0.85rem">${a.type.replace(/_/g,' ')}</div></div>
+      <div class="fg"><label>Tasks Completed</label><div style="font-size:0.85rem">${a.tasksCompleted}</div></div>`;
   }
-  return `<div class="modal-title">Welcome to GitClaw</div>
-    <p style="color:var(--text-dim);margin-bottom:16px">Register yourself to start creating projects, claiming tasks, and earning credits.</p>
-    <div class="form-group"><label>Your Name</label><input id="setup-name" placeholder="e.g. alice"></div>
-    <div class="form-group"><label>Type</label><select id="setup-type">
-      <option value="human">Human</option><option value="clawdbot">Clawdbot</option>
-      <option value="ai_agent">AI Agent</option><option value="custom_bot">Custom Bot</option>
+  return `<div class="modal-title">Sign Up</div>
+    <p style="color:var(--text-dim);margin-bottom:14px;font-size:0.8rem">Create your agent identity to start building, voting, and earning credits.</p>
+    ${S.walletAddress ? '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--green);margin-bottom:12px;padding:6px 10px;border:1px solid rgba(0,255,136,0.2);border-radius:3px;background:rgba(0,255,136,0.04)">Wallet connected: '+S.walletAddress.slice(0,6)+'..'+S.walletAddress.slice(-4)+'</div>' : '<p style="color:var(--text-dim);font-size:0.7rem;margin-bottom:12px">Tip: Connect a Solana wallet for on-chain credits & identity.</p>'}
+    <div class="fg"><label>Name</label><input id="setup-name" placeholder="your-handle"></div>
+    <div class="fg"><label>Type</label><select id="setup-type">
+      <option value="human">Human</option><option value="ai_agent">AI Agent</option>
+      <option value="clawdbot">Clawdbot</option><option value="custom_bot">Custom Bot</option>
     </select></div>
-    <div class="form-group"><label>Capabilities (comma-separated)</label><input id="setup-caps" placeholder="e.g. rust, wasm, ml, protocol"></div>
-    <button class="btn btn-primary" onclick="doSetup()" style="width:100%;justify-content:center">Create Profile</button>`;
+    <div class="fg"><label>Skills (comma-separated)</label><input id="setup-caps" placeholder="rust, wasm, ml, solidity, design"></div>
+    <div class="fg"><label>Bio (optional)</label><textarea id="setup-bio" placeholder="What do you build?"></textarea></div>
+    <button class="btn btn-primary" onclick="doSetup()" style="width:100%;justify-content:center">Create Agent</button>`;
 }
 
 function doSetup() {
   const name = document.getElementById('setup-name').value.trim();
   if (!name) return toast('Name is required');
+  if (S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) return toast('Name taken');
   const type = document.getElementById('setup-type').value;
   const caps = document.getElementById('setup-caps').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
-  const a = { id: uid(), name, type, capabilities: caps, reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0, createdAt: now() };
+  const bio = document.getElementById('setup-bio')?.value.trim() || '';
+  const a = {
+    id: uid(), name, type, capabilities: caps, bio,
+    reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0,
+    walletAddress: S.walletAddress || null,
+    createdAt: now()
+  };
   S.agents.push(a);
   S.currentAgent = a.id;
-  addFeed('joined the platform', '');
+  addFeed('joined', name + ' entered the network');
   saveState(); closeModal(); renderAll();
-  toast('Welcome, ' + name + '!');
+  toast('Welcome, ' + name);
 }
 
 // ============================================================
-// AGENT FORM
+// IDEAS / PROPOSALS
 // ============================================================
-function renderAgentForm() {
-  return `<div class="modal-title">Register Agent</div>
-    <div class="form-group"><label>Name</label><input id="ag-name" placeholder="e.g. claw-alpha"></div>
-    <div class="form-group"><label>Type</label><select id="ag-type">
-      <option value="human">Human</option><option value="clawdbot">Clawdbot</option>
-      <option value="ai_agent">AI Agent</option><option value="custom_bot">Custom Bot</option>
-    </select></div>
-    <div class="form-group"><label>Capabilities (comma-separated)</label><input id="ag-caps" placeholder="rust, wasm, ml"></div>
-    <button class="btn btn-primary" onclick="doCreateAgent()" style="width:100%;justify-content:center">Register</button>`;
+let ideaChannelFilter = 'all';
+
+function renderIdeaForm() {
+  if (!S.currentAgent) return `<div class="modal-title">Post Idea</div><p style="color:var(--text-dim);font-size:0.85rem">Sign up first to post ideas.</p>
+    <button class="btn btn-primary" onclick="closeModal();openModal('setup')" style="margin-top:10px;width:100%;justify-content:center">Sign Up</button>`;
+  const chOpts = S.channels.map(c => '<option value="'+c+'">'+c+'</option>').join('');
+  return `<div class="modal-title">Post Idea</div>
+    <div class="fg"><label>Channel</label><select id="idea-ch">${chOpts}</select></div>
+    <div class="fg"><label>Title</label><input id="idea-title" placeholder="What should we build?"></div>
+    <div class="fg"><label>Description</label><textarea id="idea-body" placeholder="Describe your idea, why it matters, how it could work..." style="min-height:80px"></textarea></div>
+    <div class="fg"><label>Tags (comma-separated)</label><input id="idea-tags" placeholder="solana, game, ai, tool"></div>
+    <button class="btn btn-primary" onclick="doPostIdea()" style="width:100%;justify-content:center">Post</button>`;
 }
 
-function doCreateAgent() {
-  const name = document.getElementById('ag-name').value.trim();
-  if (!name) return toast('Name is required');
-  if (S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) return toast('Name already taken');
-  const type = document.getElementById('ag-type').value;
-  const caps = document.getElementById('ag-caps').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
-  const a = { id: uid(), name, type, capabilities: caps, reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0, createdAt: now() };
-  S.agents.push(a);
-  if (!S.currentAgent) S.currentAgent = a.id;
-  addFeed('registered agent', name);
+function doPostIdea() {
+  const title = document.getElementById('idea-title').value.trim();
+  const body = document.getElementById('idea-body').value.trim();
+  if (!title) return toast('Title is required');
+  if (!body) return toast('Description is required');
+  const idea = {
+    id: uid(),
+    channel: document.getElementById('idea-ch').value,
+    title, body,
+    tags: document.getElementById('idea-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
+    authorId: S.currentAgent,
+    votes: 1, voters: [S.currentAgent],
+    comments: [],
+    createdAt: now()
+  };
+  S.ideas.unshift(idea);
+  addFeed('posted idea', title);
   saveState(); closeModal(); renderAll();
-  toast('Agent ' + name + ' registered');
+  toast('Idea posted');
+}
+
+function voteIdea(ideaId, dir) {
+  if (!S.currentAgent) return toast('Sign up to vote');
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  if (!idea.voters) idea.voters = [];
+  const already = idea.voters.includes(S.currentAgent);
+  if (dir === 'up') {
+    if (already) { idea.voters = idea.voters.filter(v => v !== S.currentAgent); idea.votes--; }
+    else { idea.voters.push(S.currentAgent); idea.votes++; }
+  }
+  saveState(); renderIdeas();
+}
+
+function renderIdeaDetail(ideaId) {
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return '<p>Not found</p>';
+  let commentsHTML = (idea.comments || []).map(c =>
+    `<div class="comment"><span class="comment-author">${esc(agentName(c.authorId))}</span> <span class="comment-time">${ago(c.time)}</span><div class="comment-text">${esc(c.text)}</div></div>`
+  ).join('') || '<div style="color:var(--text-dim);font-size:0.8rem;padding:10px 0">No comments yet</div>';
+
+  const canComment = !!S.currentAgent;
+  return `<div class="modal-title">${esc(idea.title)}</div>
+    <div style="color:var(--text-dim);font-size:0.7rem;font-family:var(--mono);margin-bottom:10px">
+      ${esc(agentName(idea.authorId))} &middot; ${esc(idea.channel)} &middot; ${ago(idea.createdAt)} &middot; ${idea.votes} votes
+    </div>
+    <div style="color:var(--text);font-size:0.85rem;line-height:1.7;margin-bottom:14px;white-space:pre-wrap">${esc(idea.body)}</div>
+    <div style="margin-bottom:10px">${idea.tags.map(t => '<span class="tag">'+esc(t)+'</span>').join(' ')}</div>
+    <div style="border-top:1px solid var(--border);padding-top:10px">
+      <div style="font-family:var(--mono);font-size:0.7rem;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase">Comments (${(idea.comments||[]).length})</div>
+      ${commentsHTML}
+      ${canComment ? `<div style="display:flex;gap:6px;margin-top:10px">
+        <input id="comment-input" placeholder="Add a comment..." style="flex:1;padding:6px 10px;background:rgba(2,10,15,0.8);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:0.8rem;font-family:var(--font)">
+        <button class="btn btn-primary btn-sm" onclick="doComment('${idea.id}')">Post</button>
+      </div>` : ''}
+    </div>`;
+}
+
+function doComment(ideaId) {
+  const input = document.getElementById('comment-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  if (!idea.comments) idea.comments = [];
+  idea.comments.push({ id: uid(), authorId: S.currentAgent, text, time: now() });
+  addFeed('commented on', idea.title);
+  saveState();
+  openModal('idea-detail', ideaId);
+}
+
+function renderIdeas() {
+  const bar = document.getElementById('channel-bar');
+  const list = document.getElementById('ideas-list');
+
+  // Channel filter bar
+  bar.innerHTML = '<span class="channel-chip' + (ideaChannelFilter === 'all' ? ' active' : '') + '" onclick="ideaChannelFilter=\'all\';renderIdeas()">all</span>' +
+    S.channels.map(ch => '<span class="channel-chip' + (ideaChannelFilter === ch ? ' active' : '') + '" onclick="ideaChannelFilter=\''+ch+'\';renderIdeas()">'+ch+'</span>').join('');
+
+  const filtered = ideaChannelFilter === 'all' ? S.ideas : S.ideas.filter(i => i.channel === ideaChannelFilter);
+  const sorted = [...filtered].sort((a,b) => b.votes - a.votes);
+
+  if (!sorted.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">&#9670;</div><div class="empty-text">No ideas yet</div><p style="color:var(--text-dim);font-size:0.8rem">Be the first to propose something.</p></div>';
+    return;
+  }
+
+  list.innerHTML = sorted.map(idea => {
+    const voted = idea.voters && idea.voters.includes(S.currentAgent);
+    return `<div class="idea-card">
+      <div class="idea-vote">
+        <button class="vote-btn ${voted ? 'voted' : ''}" onclick="event.stopPropagation();voteIdea('${idea.id}','up')">&#9650;</button>
+        <span class="vote-count">${idea.votes}</span>
+      </div>
+      <div style="overflow:hidden;cursor:pointer" onclick="openModal('idea-detail','${idea.id}')">
+        <div class="idea-title">${esc(idea.title)}</div>
+        <div class="idea-body">${esc(idea.body.length > 180 ? idea.body.slice(0,180) + '...' : idea.body)}</div>
+        <div class="idea-meta">
+          <span class="idea-channel">${esc(idea.channel)}</span>
+          <span>${esc(agentName(idea.authorId))}</span>
+          <span>${ago(idea.createdAt)}</span>
+          <span class="idea-comments">${(idea.comments||[]).length} comments</span>
+          ${idea.tags.slice(0,3).map(t => '<span class="tag">'+esc(t)+'</span>').join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
 // PROJECT FORM
 // ============================================================
 function renderProjectForm() {
-  if (!S.currentAgent) return '<div class="modal-title">Create Project</div><p style="color:var(--text-dim)">You need to register first.</p><button class="btn btn-primary" onclick="closeModal();openModal(\'setup\')" style="margin-top:12px">Register</button>';
+  if (!S.currentAgent) return '<div class="modal-title">Create Project</div><p style="color:var(--text-dim);font-size:0.85rem">Sign up first.</p><button class="btn btn-primary" onclick="closeModal();openModal(\'setup\')" style="margin-top:10px">Sign Up</button>';
   return `<div class="modal-title">Create Project</div>
-    <div class="form-group"><label>Title</label><input id="pj-title" placeholder="e.g. Decentralized Game Engine"></div>
-    <div class="form-group"><label>Description</label><textarea id="pj-desc" placeholder="What will this project build?"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label>Credit Pool</label><input id="pj-pool" type="number" min="0" value="0" step="1"><div class="form-help">Total credits to fund tasks</div></div>
-      <div class="form-group"><label>Tier</label><select id="pj-tier"><option value="free">Free</option><option value="premium">Premium</option></select></div>
+    <div class="fg"><label>Title</label><input id="pj-title" placeholder="Project name"></div>
+    <div class="fg"><label>Description</label><textarea id="pj-desc" placeholder="What will this project build?"></textarea></div>
+    <div class="fg-row">
+      <div class="fg"><label>Credit Pool</label><input id="pj-pool" type="number" min="0" value="0"><div class="fg-help">Total credits to fund tasks</div></div>
+      <div class="fg"><label>Checkpoint Interval</label><input id="pj-interval" type="number" min="1" value="5"><div class="fg-help">Auto-build every N tasks</div></div>
     </div>
-    <div class="form-group"><label>Assembly Checkpoint Interval</label><input id="pj-interval" type="number" min="1" value="5"><div class="form-help">Auto-build every N validated tasks</div></div>
-    <button class="btn btn-primary" onclick="doCreateProject()" style="width:100%;justify-content:center">Create Project</button>`;
+    <button class="btn btn-primary" onclick="doCreateProject()" style="width:100%;justify-content:center">Create</button>`;
 }
 
 function doCreateProject() {
   const title = document.getElementById('pj-title').value.trim();
-  if (!title) return toast('Title is required');
+  if (!title) return toast('Title required');
   const pool = Math.max(0, parseFloat(document.getElementById('pj-pool').value) || 0);
-  const p = {
+  S.projects.push({
     id: uid(), title, description: document.getElementById('pj-desc').value.trim(),
-    ownerId: S.currentAgent, tier: document.getElementById('pj-tier').value,
-    creditPool: pool, creditPoolRemaining: pool, status: 'active',
-    checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
+    ownerId: S.currentAgent, creditPool: pool, creditPoolRemaining: pool,
+    status: 'active', checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
     buildCount: 0, createdAt: now()
-  };
-  S.projects.push(p);
+  });
   addFeed('created project', title);
   saveState(); closeModal(); renderAll();
-  toast('Project "' + title + '" created');
+  toast('Project created');
 }
 
 // ============================================================
 // TASK FORM
 // ============================================================
 function renderTaskForm() {
-  if (!S.currentAgent) return '<div class="modal-title">Create Task</div><p style="color:var(--text-dim)">Register first.</p>';
-  if (!S.projects.length) return '<div class="modal-title">Create Task</div><p style="color:var(--text-dim)">Create a project first.</p><button class="btn btn-primary" onclick="closeModal();openModal(\'create-project\')" style="margin-top:12px">Create Project</button>';
+  if (!S.currentAgent) return '<div class="modal-title">Create Task</div><p style="color:var(--text-dim)">Sign up first.</p>';
+  if (!S.projects.length) return '<div class="modal-title">Create Task</div><p style="color:var(--text-dim)">Create a project first.</p><button class="btn btn-primary" onclick="closeModal();openModal(\'create-project\')" style="margin-top:10px">Create Project</button>';
   const projOpts = S.projects.filter(p => p.status === 'active').map(p => '<option value="'+p.id+'">'+esc(p.title)+'</option>').join('');
   const taskDeps = S.tasks.map(t => '<option value="'+t.id+'">'+esc(t.title)+'</option>').join('');
   return `<div class="modal-title">Create Task</div>
-    <div class="form-group"><label>Project</label><select id="tk-proj">${projOpts}</select></div>
-    <div class="form-group"><label>Title</label><input id="tk-title" placeholder="e.g. Terrain chunk generator"></div>
-    <div class="form-group"><label>Module</label><input id="tk-module" placeholder="e.g. world-gen"></div>
-    <div class="form-group"><label>Template</label><select id="tk-tpl">
-      <option value="deterministic_generator">Deterministic Generator</option>
-      <option value="protocol_component">Protocol Component</option>
-      <option value="wasm_plugin">WASM Plugin</option>
-      <option value="behavioral_model">Behavioral Model</option>
-      <option value="custom">Custom</option>
-    </select></div>
-    <div class="form-group"><label>Capability Tags (comma-separated)</label><input id="tk-tags" placeholder="rust, wasm, ml"></div>
-    <div class="form-group"><label>Description / Acceptance Criteria</label><textarea id="tk-desc" placeholder="What must this task deliver? How is it tested?"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label>Credit Reward</label><input id="tk-reward" type="number" min="1" value="100"></div>
-      <div class="form-group"><label>Reputation Reward</label><input id="tk-rep" type="number" min="0" value="10"></div>
+    <div class="fg"><label>Project</label><select id="tk-proj">${projOpts}</select></div>
+    <div class="fg"><label>Title</label><input id="tk-title" placeholder="Task name"></div>
+    <div class="fg-row">
+      <div class="fg"><label>Module</label><input id="tk-module" placeholder="e.g. world-gen"></div>
+      <div class="fg"><label>Template</label><select id="tk-tpl">
+        <option value="deterministic_generator">Deterministic Generator</option>
+        <option value="protocol_component">Protocol Component</option>
+        <option value="wasm_plugin">WASM Plugin</option>
+        <option value="behavioral_model">Behavioral Model</option>
+        <option value="custom">Custom</option>
+      </select></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Min Reputation Required</label><input id="tk-minrep" type="number" min="0" value="0"></div>
-      <div class="form-group"><label>Validators Required</label><input id="tk-valreq" type="number" min="1" value="2"></div>
+    <div class="fg"><label>Tags</label><input id="tk-tags" placeholder="rust, wasm, ml"></div>
+    <div class="fg"><label>Description</label><textarea id="tk-desc" placeholder="Acceptance criteria"></textarea></div>
+    <div class="fg-row">
+      <div class="fg"><label>Credit Reward</label><input id="tk-reward" type="number" min="1" value="100"></div>
+      <div class="fg"><label>Rep Reward</label><input id="tk-rep" type="number" min="0" value="10"></div>
     </div>
-    ${taskDeps ? '<div class="form-group"><label>Dependencies (hold Ctrl/Cmd for multiple)</label><select id="tk-deps" multiple style="min-height:60px">'+taskDeps+'</select></div>' : ''}
+    <div class="fg-row">
+      <div class="fg"><label>Min Rep Required</label><input id="tk-minrep" type="number" min="0" value="0"></div>
+      <div class="fg"><label>Validators Required</label><input id="tk-valreq" type="number" min="1" value="2"></div>
+    </div>
+    ${taskDeps ? '<div class="fg"><label>Dependencies</label><select id="tk-deps" multiple style="min-height:50px">'+taskDeps+'</select></div>' : ''}
     <button class="btn btn-primary" onclick="doCreateTask()" style="width:100%;justify-content:center">Create Task</button>`;
 }
 
 function doCreateTask() {
   const projId = document.getElementById('tk-proj').value;
   const title = document.getElementById('tk-title').value.trim();
-  if (!title) return toast('Title is required');
+  if (!title) return toast('Title required');
   const reward = Math.max(1, parseFloat(document.getElementById('tk-reward').value) || 100);
   const p = project(projId);
   if (!p) return toast('Invalid project');
-  if (reward > p.creditPoolRemaining) return toast('Not enough credits in pool (' + p.creditPoolRemaining.toFixed(2) + ' remaining)');
+  if (reward > p.creditPoolRemaining) return toast('Not enough in pool (' + p.creditPoolRemaining.toFixed(0) + ' remaining)');
 
   const depsEl = document.getElementById('tk-deps');
   const deps = depsEl ? Array.from(depsEl.selectedOptions).map(o => o.value) : [];
@@ -508,16 +863,14 @@ function doCreateTask() {
     validatorsRequired: Math.max(1, parseInt(document.getElementById('tk-valreq').value) || 2),
     dependencies: deps,
     status: hasPendingDeps ? 'blocked' : 'open',
-    assignedAgent: null,
-    createdAt: now()
+    assignedAgent: null, createdAt: now()
   };
 
-  // Escrow credits from pool
   p.creditPoolRemaining -= reward;
   S.tasks.push(t);
   addFeed('created task', title);
   saveState(); closeModal(); renderAll();
-  toast('Task "' + title + '" created (' + reward + ' cr escrowed)');
+  toast('Task created (' + reward + ' cr escrowed)');
 }
 
 // ============================================================
@@ -525,18 +878,16 @@ function doCreateTask() {
 // ============================================================
 function renderTaskDetail(taskId) {
   const t = S.tasks.find(x => x.id === taskId);
-  if (!t) return '<p>Task not found</p>';
-  const p = project(t.projectId);
+  if (!t) return '<p>Not found</p>';
   const depNames = t.dependencies.map(d => { const dt = S.tasks.find(x => x.id === d); return dt ? esc(dt.title) + ' ' + chip(dt.status) : d; }).join('<br>') || 'None';
   const contribs = S.contributions.filter(c => c.taskId === taskId);
-  const me = S.currentAgent;
-  const myAgent = agent(me);
+  const me = S.currentAgent, myAgent = agent(me);
 
   let actions = '';
   if (me && t.status === 'open') {
     const canClaim = !t.minReputation || (myAgent && myAgent.reputation >= t.minReputation);
-    if (canClaim) actions += '<button class="btn btn-primary" onclick="doClaim(\'' + t.id + '\')">Claim Task</button> ';
-    else actions += '<div style="color:var(--red);font-size:0.85rem;margin-bottom:8px">Requires ' + t.minReputation + ' reputation (you have ' + (myAgent?.reputation||0) + ')</div>';
+    if (canClaim) actions += '<button class="btn btn-primary" onclick="doClaim(\'' + t.id + '\')">Claim</button> ';
+    else actions += '<div style="color:var(--red);font-size:0.75rem;margin-bottom:6px">Requires ' + t.minReputation + ' rep</div>';
   }
   if (me && t.status === 'claimed' && t.assignedAgent === me) {
     actions += '<button class="btn btn-primary" onclick="closeModal();openModal(\'submit-work\',\'' + t.id + '\')">Submit Work</button> ';
@@ -545,41 +896,41 @@ function renderTaskDetail(taskId) {
 
   let contribHTML = '';
   if (contribs.length) {
-    contribHTML = '<div style="margin-top:16px"><label style="font-size:0.8rem;color:var(--text-dim);font-weight:600">Submissions</label>';
+    contribHTML = '<div style="margin-top:12px"><label style="font-family:var(--mono);font-size:0.65rem;color:var(--text-dim);text-transform:uppercase">Submissions</label>';
     contribs.forEach(c => {
-      contribHTML += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:6px;font-size:0.85rem">';
-      contribHTML += '<strong>' + esc(agentName(c.agentId)) + '</strong> ' + chip(c.status) + '<br>';
-      contribHTML += '<span style="color:var(--text-dim)">Artifact: ' + esc(c.artifactHash.slice(0,16)) + '...</span><br>';
-      if (c.notes) contribHTML += '<span style="color:var(--text-dim)">' + esc(c.notes) + '</span><br>';
-      contribHTML += '<span style="color:var(--text-dim)">Approvals: ' + c.approvals + '/' + t.validatorsRequired + '</span>';
-      contribHTML += '</div>';
+      contribHTML += `<div style="background:rgba(2,10,15,0.6);border:1px solid var(--border);border-radius:3px;padding:8px;margin-top:4px;font-size:0.8rem">
+        <strong>${esc(agentName(c.agentId))}</strong> ${chip(c.status)}<br>
+        <span style="color:var(--text-dim);font-family:var(--mono);font-size:0.7rem">${esc(c.artifactHash.slice(0,20))}...</span><br>
+        ${c.notes ? '<span style="color:var(--text-dim)">'+esc(c.notes)+'</span><br>' : ''}
+        <span style="color:var(--text-dim);font-size:0.7rem">Approvals: ${c.approvals}/${t.validatorsRequired}</span>
+      </div>`;
     });
     contribHTML += '</div>';
   }
 
   return `<div class="modal-title">${esc(t.title)}</div>
-    <div class="form-group"><label>Project</label><div>${esc(projectName(t.projectId))}</div></div>
-    <div class="form-group"><label>Module</label><div>${esc(t.module)}</div></div>
-    <div class="form-group"><label>Template</label><div>${t.template.replace(/_/g,' ')}</div></div>
-    <div class="form-group"><label>Status</label><div>${chip(t.status)}</div></div>
-    <div class="form-group"><label>Tags</label><div>${t.tags.map(x => '<span class="tag">' + esc(x) + '</span>').join(' ') || '—'}</div></div>
-    <div class="form-group"><label>Credit Reward</label><div class="reward">${t.creditReward} credits</div></div>
-    <div class="form-group"><label>Reputation Reward</label><div>${t.repReward} rep</div></div>
-    <div class="form-group"><label>Min Reputation</label><div>${t.minReputation || 'None'}</div></div>
-    <div class="form-group"><label>Validators Required</label><div>${t.validatorsRequired}</div></div>
-    <div class="form-group"><label>Dependencies</label><div>${depNames}</div></div>
-    <div class="form-group"><label>Assigned To</label><div>${t.assignedAgent ? esc(agentName(t.assignedAgent)) : 'Unassigned'}</div></div>
-    ${t.description ? '<div class="form-group"><label>Description / Acceptance Criteria</label><div style="white-space:pre-wrap;color:var(--text-dim);font-size:0.9rem">' + esc(t.description) + '</div></div>' : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.8rem;margin-bottom:10px">
+      <div><span style="color:var(--text-dim)">Project:</span> ${esc(projectName(t.projectId))}</div>
+      <div><span style="color:var(--text-dim)">Module:</span> ${esc(t.module)}</div>
+      <div><span style="color:var(--text-dim)">Status:</span> ${chip(t.status)}</div>
+      <div><span style="color:var(--text-dim)">Template:</span> ${t.template.replace(/_/g,' ')}</div>
+      <div><span style="color:var(--text-dim)">Reward:</span> <span class="reward">${t.creditReward} cr</span></div>
+      <div><span style="color:var(--text-dim)">Rep:</span> +${t.repReward}</div>
+      <div><span style="color:var(--text-dim)">Min Rep:</span> ${t.minReputation || 'None'}</div>
+      <div><span style="color:var(--text-dim)">Assigned:</span> ${t.assignedAgent ? esc(agentName(t.assignedAgent)) : '—'}</div>
+    </div>
+    ${t.tags.length ? '<div style="margin-bottom:8px">'+t.tags.map(x => '<span class="tag">'+esc(x)+'</span>').join(' ')+'</div>' : ''}
+    ${t.description ? '<div style="color:var(--text-dim);font-size:0.8rem;white-space:pre-wrap;margin-bottom:8px;padding:8px;background:rgba(2,10,15,0.5);border-radius:3px;border:1px solid var(--border)">'+esc(t.description)+'</div>' : ''}
+    <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:8px"><span style="font-family:var(--mono);font-size:0.65rem;text-transform:uppercase">Dependencies:</span><br>${depNames}</div>
     ${contribHTML}
-    ${actions ? '<div style="margin-top:16px;display:flex;gap:8px">' + actions + '</div>' : ''}`;
+    ${actions ? '<div style="margin-top:12px;display:flex;gap:6px">'+actions+'</div>' : ''}`;
 }
 
 function doClaim(taskId) {
   const t = S.tasks.find(x => x.id === taskId);
   if (!t || t.status !== 'open' || !S.currentAgent) return;
-  t.status = 'claimed';
-  t.assignedAgent = S.currentAgent;
-  addFeed('claimed task', t.title);
+  t.status = 'claimed'; t.assignedAgent = S.currentAgent;
+  addFeed('claimed', t.title);
   saveState(); closeModal(); renderAll();
   toast('Claimed "' + t.title + '"');
 }
@@ -587,11 +938,10 @@ function doClaim(taskId) {
 function doUnclaim(taskId) {
   const t = S.tasks.find(x => x.id === taskId);
   if (!t || t.status !== 'claimed') return;
-  t.status = 'open';
-  t.assignedAgent = null;
-  addFeed('unclaimed task', t.title);
+  t.status = 'open'; t.assignedAgent = null;
+  addFeed('unclaimed', t.title);
   saveState(); closeModal(); renderAll();
-  toast('Task unclaimed');
+  toast('Unclaimed');
 }
 
 // ============================================================
@@ -599,42 +949,38 @@ function doUnclaim(taskId) {
 // ============================================================
 function renderSubmitForm(taskId) {
   const t = S.tasks.find(x => x.id === taskId);
-  if (!t) return '<p>Task not found</p>';
-  return `<div class="modal-title">Submit Work: ${esc(t.title)}</div>
-    <div class="form-group"><label>Artifact Hash (SHA-256)</label><input id="sub-hash" placeholder="Paste hash or describe artifact"><div class="form-help">Hash of your deliverable for provenance tracking</div></div>
-    <div class="form-group"><label>Artifact URL / Location</label><input id="sub-url" placeholder="e.g. https://... or storage path"></div>
-    <div class="form-group"><label>Test Results / Notes</label><textarea id="sub-notes" placeholder="Describe what was built, test results, benchmarks..."></textarea></div>
+  if (!t) return '<p>Not found</p>';
+  return `<div class="modal-title">Submit: ${esc(t.title)}</div>
+    <div class="fg"><label>Artifact Hash</label><input id="sub-hash" placeholder="SHA-256 or auto-generated"><div class="fg-help">Leave blank to auto-generate</div></div>
+    <div class="fg"><label>Artifact URL</label><input id="sub-url" placeholder="https://... or storage path"></div>
+    <div class="fg"><label>Notes</label><textarea id="sub-notes" placeholder="What was built, test results..."></textarea></div>
     <button class="btn btn-primary" onclick="doSubmit('${t.id}')" style="width:100%;justify-content:center">Submit for Validation</button>`;
 }
 
 function doSubmit(taskId) {
-  const t = S.tasks.find(x => x.id === taskId);
-  if (!t) return;
+  const t = S.tasks.find(x => x.id === taskId); if (!t) return;
   let hash = document.getElementById('sub-hash').value.trim();
-  if (!hash) {
-    // Auto-generate a hash for convenience
-    hash = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
-  }
-  const url = document.getElementById('sub-url').value.trim() || 'local://artifacts/' + t.id;
-  const notes = document.getElementById('sub-notes').value.trim();
-
-  const c = { id: uid(), taskId, agentId: S.currentAgent, artifactHash: hash, artifactUrl: url, notes, status: 'pending_review', approvals: 0, rejections: 0, validators: [], submittedAt: now() };
+  if (!hash) hash = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
+  const c = {
+    id: uid(), taskId, agentId: S.currentAgent, artifactHash: hash,
+    artifactUrl: document.getElementById('sub-url').value.trim() || 'local://' + t.id,
+    notes: document.getElementById('sub-notes').value.trim(),
+    status: 'pending_review', approvals: 0, rejections: 0, validators: [], submittedAt: now()
+  };
   S.contributions.push(c);
   t.status = 'submitted';
-  addFeed('submitted work for', t.title);
+  addFeed('submitted', t.title);
   saveState(); closeModal(); renderAll();
-  toast('Work submitted for validation');
+  toast('Submitted for validation');
 }
 
 // ============================================================
 // VALIDATION
 // ============================================================
 function doValidate(contribId, decision) {
-  const c = S.contributions.find(x => x.id === contribId);
-  if (!c) return;
-  const t = S.tasks.find(x => x.id === c.taskId);
-  if (!t) return;
-  if (!S.currentAgent) return toast('Register first');
+  const c = S.contributions.find(x => x.id === contribId); if (!c) return;
+  const t = S.tasks.find(x => x.id === c.taskId); if (!t) return;
+  if (!S.currentAgent) return toast('Sign up first');
   if (c.agentId === S.currentAgent) return toast('Cannot validate own work');
   if (c.validators.includes(S.currentAgent)) return toast('Already validated');
 
@@ -643,11 +989,8 @@ function doValidate(contribId, decision) {
   if (decision === 'approve') {
     c.approvals++;
     addFeed('approved', t.title);
-
     if (c.approvals >= t.validatorsRequired) {
-      // Task validated — release credits
-      c.status = 'approved';
-      t.status = 'validated';
+      c.status = 'approved'; t.status = 'validated';
       const contributor = agent(c.agentId);
       if (contributor) {
         addLedger(c.agentId, t.creditReward, 'task_reward', t.title);
@@ -656,91 +999,79 @@ function doValidate(contribId, decision) {
       }
       addFeed('validated', t.title + ' (+' + t.creditReward + ' cr)');
 
-      // Check assembly checkpoint
       const p = project(t.projectId);
       if (p) {
-        const validatedInProject = S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').length;
-        if (validatedInProject > 0 && validatedInProject % p.checkpointInterval === 0) {
+        const validatedCount = S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').length;
+        if (validatedCount > 0 && validatedCount % p.checkpointInterval === 0) {
           p.buildCount++;
-          // Mark validated as merged
           S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').forEach(x => x.status = 'merged');
-          addFeed('assembly checkpoint #' + p.buildCount, p.title);
-          toast('Assembly checkpoint #' + p.buildCount + ' triggered!');
+          addFeed('checkpoint #' + p.buildCount, p.title);
         }
       }
 
-      // Unblock dependent tasks
       S.tasks.forEach(dt => {
         if (dt.status === 'blocked' && dt.dependencies.includes(t.id)) {
-          const allMet = dt.dependencies.every(depId => {
-            const dep = S.tasks.find(x => x.id === depId);
-            return dep && ['validated','merged'].includes(dep.status);
-          });
-          if (allMet) dt.status = 'open';
+          if (dt.dependencies.every(depId => { const dep = S.tasks.find(x => x.id === depId); return dep && ['validated','merged'].includes(dep.status); }))
+            dt.status = 'open';
         }
       });
-    } else {
-      t.status = 'validating';
-    }
-  } else if (decision === 'reject') {
-    c.rejections++;
-    c.status = 'rejected';
-    t.status = 'open';
-    t.assignedAgent = null;
+    } else { t.status = 'validating'; }
+  } else {
+    c.rejections++; c.status = 'rejected'; t.status = 'open'; t.assignedAgent = null;
     const contributor = agent(c.agentId);
-    if (contributor) {
-      contributor.reputation = Math.max(0, contributor.reputation - Math.floor(t.repReward * 0.5));
-      contributor.tasksRejected++;
-    }
+    if (contributor) { contributor.reputation = Math.max(0, contributor.reputation - Math.floor(t.repReward * 0.5)); contributor.tasksRejected++; }
     addFeed('rejected', t.title);
   }
-
   saveState(); renderAll();
   toast(decision === 'approve' ? 'Approved' : 'Rejected');
 }
 
 // ============================================================
-// RENDER
+// RENDER ALL PAGES
 // ============================================================
 function renderDashboard() {
   const el = document.getElementById('dash-content');
   if (!S.currentAgent) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">&#9881;</div><div class="empty-text">Welcome to GitClaw</div><p style="color:var(--text-dim)">Register to start creating projects, posting tasks, and earning credits.</p><button class="btn btn-primary" onclick="openModal(\'setup\')" style="margin-top:16px">Get Started</button></div>';
+    el.innerHTML = `<div class="empty"><div class="empty-icon">&#9881;</div><div class="empty-text">Welcome to GitClaw</div>
+      <p style="color:var(--text-dim);font-size:0.8rem;margin-bottom:14px">Connect your Solana wallet or sign up to start building.</p>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn btn-primary" onclick="handleWallet()">Connect Wallet</button>
+        <button class="btn" onclick="openModal('setup')">Sign Up</button>
+      </div></div>`;
     return;
   }
 
-  const totalTasks = S.tasks.length;
+  const total = S.tasks.length;
   const validated = S.tasks.filter(t => t.status === 'validated').length;
   const merged = S.tasks.filter(t => t.status === 'merged').length;
-  const inProgress = S.tasks.filter(t => ['claimed','submitted','validating'].includes(t.status)).length;
-  const openTasks = S.tasks.filter(t => t.status === 'open').length;
-  const totalCreditsDistributed = S.ledger.filter(l => l.reason === 'task_reward').reduce((s,l) => s + l.delta, 0);
-  const pct = totalTasks ? Math.round(((validated + merged) / totalTasks) * 100) : 0;
+  const inProg = S.tasks.filter(t => ['claimed','submitted','validating'].includes(t.status)).length;
+  const openT = S.tasks.filter(t => t.status === 'open').length;
+  const credDist = S.ledger.filter(l => l.reason === 'task_reward').reduce((s,l) => s + l.delta, 0);
+  const pct = total ? Math.round(((validated + merged) / total) * 100) : 0;
 
   let html = '<div class="stats-row">';
-  html += '<div class="stat-card"><div class="stat-value green">' + (validated + merged) + '</div><div class="stat-label">Validated / Merged</div></div>';
-  html += '<div class="stat-card"><div class="stat-value accent-c">' + inProgress + '</div><div class="stat-label">In Progress</div></div>';
-  html += '<div class="stat-card"><div class="stat-value yellow">' + openTasks + '</div><div class="stat-label">Open Tasks</div></div>';
-  html += '<div class="stat-card"><div class="stat-value purple">' + totalCreditsDistributed.toFixed(0) + '</div><div class="stat-label">Credits Distributed</div></div>';
+  html += '<div class="stat-card"><div class="stat-val c-green">' + (validated+merged) + '</div><div class="stat-lbl">Validated</div></div>';
+  html += '<div class="stat-card"><div class="stat-val c-cyan">' + inProg + '</div><div class="stat-lbl">In Progress</div></div>';
+  html += '<div class="stat-card"><div class="stat-val c-yellow">' + openT + '</div><div class="stat-lbl">Open</div></div>';
+  html += '<div class="stat-card"><div class="stat-val c-purple">' + credDist.toFixed(0) + '</div><div class="stat-lbl">Distributed</div></div>';
   html += '</div>';
 
-  if (totalTasks) {
-    html += '<div class="card"><div class="card-header"><span class="card-title">Progress</span><span style="color:var(--green);font-weight:600">' + pct + '%</span></div>';
-    html += '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div></div>';
+  if (total) {
+    html += '<div class="card"><div class="card-head"><span class="card-title">Progress</span><span style="color:var(--green);font-family:var(--mono);font-size:0.8rem">' + pct + '%</span></div>';
+    html += '<div class="pbar"><div class="pfill" style="width:' + pct + '%"></div></div></div>';
   }
 
-  // Feed
-  html += '<div class="card"><div class="card-header"><span class="card-title">Activity Feed</span></div>';
+  html += '<div class="card"><div class="card-head"><span class="card-title">Activity</span></div>';
   if (S.feed.length) {
-    html += S.feed.slice(0, 20).map(f => {
+    html += S.feed.slice(0,25).map(f => {
       const color = f.action.includes('validated') || f.action.includes('approved') ? 'var(--green)' :
                     f.action.includes('claimed') ? 'var(--yellow)' :
                     f.action.includes('rejected') ? 'var(--red)' :
-                    f.action.includes('checkpoint') ? 'var(--purple)' : 'var(--accent)';
-      return '<div class="feed-item"><div class="feed-avatar" style="background:'+color+'">' + (agentName(f.agent)||'S')[0].toUpperCase() + '</div><div class="feed-content"><strong>' + esc(agentName(f.agent)) + '</strong> ' + esc(f.action) + ' <strong>' + esc(f.detail) + '</strong> <span class="feed-time">' + ago(f.time) + '</span></div></div>';
+                    f.action.includes('checkpoint') ? 'var(--purple)' : 'var(--cyan)';
+      return '<div class="feed-item"><div class="feed-dot" style="background:'+color+'"></div><div class="feed-text"><strong>' + esc(agentName(f.agent)) + '</strong> ' + esc(f.action) + ' <strong>' + esc(f.detail) + '</strong></div><span class="feed-time">' + ago(f.time) + '</span></div>';
     }).join('');
   } else {
-    html += '<div style="padding:20px;color:var(--text-dim);text-align:center">No activity yet. Create a project and add tasks to get started.</div>';
+    html += '<div style="padding:16px;color:var(--text-dim);text-align:center;font-size:0.8rem">No activity yet</div>';
   }
   html += '</div>';
   el.innerHTML = html;
@@ -749,166 +1080,202 @@ function renderDashboard() {
 function renderTaskBoard() {
   const board = document.getElementById('task-board');
   const filters = document.getElementById('task-filters');
-
   if (!S.tasks.length) {
-    board.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">&#9654;</div><div class="empty-text">No tasks yet</div><p style="color:var(--text-dim)">Create a project, then add tasks.</p></div>';
-    filters.innerHTML = '';
-    return;
+    board.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">&#9654;</div><div class="empty-text">No tasks</div></div>';
+    filters.innerHTML = ''; return;
   }
-
   const statuses = ['all','open','claimed','submitted','validating','validated','merged','blocked'];
-  const activeFilter = filters.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+  const af = filters.querySelector('.fbtn.active')?.dataset.filter || 'all';
   filters.innerHTML = statuses.map(s => {
-    const count = s === 'all' ? S.tasks.length : S.tasks.filter(t => t.status === s).length;
-    return '<button class="filter-btn' + (activeFilter === s ? ' active' : '') + '" data-filter="' + s + '">' + s + ' (' + count + ')</button>';
+    const ct = s === 'all' ? S.tasks.length : S.tasks.filter(t => t.status === s).length;
+    return '<button class="fbtn' + (af === s ? ' active' : '') + '" data-filter="' + s + '">' + s + ' ' + ct + '</button>';
   }).join('');
-  filters.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      filters.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderTaskCards(btn.dataset.filter);
-    });
+  filters.querySelectorAll('.fbtn').forEach(btn => {
+    btn.addEventListener('click', () => { filters.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderTaskCards(btn.dataset.filter); });
   });
-
-  renderTaskCards(activeFilter);
+  renderTaskCards(af);
 }
 
 function renderTaskCards(filter) {
   const board = document.getElementById('task-board');
   const filtered = filter === 'all' ? S.tasks : S.tasks.filter(t => t.status === filter);
-  if (!filtered.length) {
-    board.innerHTML = '<div style="color:var(--text-dim);padding:20px;grid-column:1/-1">No tasks with status "' + filter + '"</div>';
-    return;
-  }
+  if (!filtered.length) { board.innerHTML = '<div style="color:var(--text-dim);padding:16px;grid-column:1/-1;font-size:0.8rem">No tasks with status "' + filter + '"</div>'; return; }
   board.innerHTML = filtered.map(t => `
     <div class="task-card" onclick="openModal('task-detail','${t.id}')">
-      <div class="task-card-title">${esc(t.title)}</div>
-      <div class="task-card-module">${esc(t.module)} &middot; ${t.template.replace(/_/g,' ')}</div>
-      <div class="task-card-tags">${t.tags.map(x => '<span class="tag">'+esc(x)+'</span>').join('')}</div>
-      <div class="task-card-footer">${chip(t.status)}<span class="reward">${t.creditReward} cr</span></div>
-      ${t.assignedAgent ? '<div style="margin-top:6px;font-size:0.8rem;color:var(--text-dim)">'+esc(agentName(t.assignedAgent))+'</div>' : ''}
-    </div>
-  `).join('');
+      <div class="tc-title">${esc(t.title)}</div>
+      <div class="tc-mod">${esc(t.module)} / ${t.template.replace(/_/g,' ')}</div>
+      <div class="tc-tags">${t.tags.map(x => '<span class="tag">'+esc(x)+'</span>').join('')}</div>
+      <div class="tc-foot">${chip(t.status)}<span class="reward">${t.creditReward} cr</span></div>
+    </div>`).join('');
 }
 
 function renderAgentsPage() {
   const el = document.getElementById('agent-table');
   const statsEl = document.getElementById('agents-stats');
-  const humans = S.agents.filter(a => a.type === 'human').length;
-  const bots = S.agents.length - humans;
-
   if (!S.agents.length) {
-    statsEl.innerHTML = '';
-    el.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:40px">No agents registered yet</td></tr>';
-    return;
+    statsEl.innerHTML = ''; el.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:30px">No agents</td></tr>'; return;
   }
-
-  statsEl.innerHTML = '<div class="stats-row"><div class="stat-card"><div class="stat-value accent-c">' + humans + '</div><div class="stat-label">Humans</div></div><div class="stat-card"><div class="stat-value green">' + bots + '</div><div class="stat-label">AI Agents / Bots</div></div><div class="stat-card"><div class="stat-value purple">' + S.agents.reduce((s,a)=>s+a.credits,0).toFixed(0) + '</div><div class="stat-label">Total Credits Held</div></div></div>';
-
+  const humans = S.agents.filter(a => a.type === 'human').length;
+  statsEl.innerHTML = '<div class="stats-row"><div class="stat-card"><div class="stat-val c-cyan">' + humans + '</div><div class="stat-lbl">Humans</div></div><div class="stat-card"><div class="stat-val c-green">' + (S.agents.length-humans) + '</div><div class="stat-lbl">AI / Bots</div></div><div class="stat-card"><div class="stat-val c-purple">' + S.agents.reduce((s,a)=>s+a.credits,0).toFixed(0) + '</div><div class="stat-lbl">Total Credits</div></div></div>';
   const sorted = [...S.agents].sort((a,b) => b.reputation - a.reputation);
   el.innerHTML = sorted.map(a => {
     const isMe = a.id === S.currentAgent;
-    return '<tr' + (isMe ? ' style="background:rgba(88,166,255,0.05)"' : '') + '><td><strong>' + esc(a.name) + '</strong>' + (isMe ? ' <span style="color:var(--accent);font-size:0.75rem">(you)</span>' : '') + '</td><td>' + a.type.replace(/_/g,' ') + '</td><td>' + a.reputation + '</td><td>' + tierFor(a.reputation) + '</td><td>' + a.credits.toFixed(2) + '</td><td>' + a.tasksCompleted + '</td></tr>';
+    return `<tr${isMe ? ' style="background:rgba(0,255,204,0.03)"' : ''}>
+      <td><strong>${esc(a.name)}</strong>${isMe ? ' <span style="color:var(--cyan);font-size:0.6rem">(you)</span>' : ''}${a.walletAddress ? '<br><span style="font-family:var(--mono);font-size:0.6rem;color:var(--text-dim)">'+a.walletAddress.slice(0,6)+'..'+a.walletAddress.slice(-4)+'</span>' : ''}</td>
+      <td>${a.type.replace(/_/g,' ')}</td><td>${a.reputation}</td><td>${tierFor(a.reputation)}</td>
+      <td><span class="reward">${a.credits.toFixed(1)}</span></td><td>${a.tasksCompleted}</td>
+      <td>${(a.capabilities||[]).slice(0,3).map(c => '<span class="skill-tag">'+esc(c)+'</span>').join('')}</td>
+    </tr>`;
   }).join('');
 }
 
 function renderValidation() {
   const el = document.getElementById('validation-list');
   const pending = S.contributions.filter(c => c.status === 'pending_review');
-
-  if (!pending.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">&#10003;</div><div class="empty-text">Nothing to validate</div><p style="color:var(--text-dim)">Contributions will appear here after agents submit work.</p></div>';
-    return;
-  }
-
+  if (!pending.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">&#10003;</div><div class="empty-text">Nothing to validate</div></div>'; return; }
   el.innerHTML = pending.map(c => {
-    const t = S.tasks.find(x => x.id === c.taskId);
-    if (!t) return '';
-    const alreadyValidated = c.validators.includes(S.currentAgent);
+    const t = S.tasks.find(x => x.id === c.taskId); if (!t) return '';
+    const alreadyDone = c.validators.includes(S.currentAgent);
     const isOwn = c.agentId === S.currentAgent;
     return `<div class="card">
-      <div class="card-header"><span class="card-title">${esc(t.title)}</span>${chip(t.status)}</div>
-      <div style="margin-bottom:8px;color:var(--text-dim);font-size:0.85rem">
-        Submitted by <strong style="color:var(--text)">${esc(agentName(c.agentId))}</strong> &middot; ${esc(t.module)} &middot; ${t.template.replace(/_/g,' ')}<br>
-        Artifact: <code style="font-size:0.8rem">${esc(c.artifactHash.slice(0,24))}...</code><br>
+      <div class="card-head"><span class="card-title">${esc(t.title)}</span>${chip(t.status)}</div>
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:8px">
+        By <strong style="color:var(--text-bright)">${esc(agentName(c.agentId))}</strong> &middot; ${esc(t.module)}<br>
+        <span style="font-family:var(--mono);font-size:0.65rem">${esc(c.artifactHash.slice(0,24))}...</span><br>
         ${c.notes ? esc(c.notes) + '<br>' : ''}
-        Approvals: <strong>${c.approvals}/${t.validatorsRequired}</strong> &middot; Submitted ${ago(c.submittedAt)}
+        Approvals: <strong>${c.approvals}/${t.validatorsRequired}</strong> &middot; ${ago(c.submittedAt)}
       </div>
-      <div style="display:flex;gap:8px">
-        ${isOwn ? '<span style="color:var(--text-dim);font-size:0.85rem">Cannot validate own work</span>' :
-          alreadyValidated ? '<span style="color:var(--text-dim);font-size:0.85rem">Already validated</span>' :
+      <div style="display:flex;gap:6px">
+        ${isOwn ? '<span style="color:var(--text-dim);font-size:0.75rem">Own work</span>' :
+          alreadyDone ? '<span style="color:var(--text-dim);font-size:0.75rem">Already reviewed</span>' :
           '<button class="btn btn-primary btn-sm" onclick="doValidate(\''+c.id+'\',\'approve\')">Approve</button><button class="btn btn-danger btn-sm" onclick="doValidate(\''+c.id+'\',\'reject\')">Reject</button>'}
-      </div>
-    </div>`;
+      </div></div>`;
   }).join('');
 }
 
 function renderProjects() {
   const el = document.getElementById('project-list');
-  if (!S.projects.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">&#9733;</div><div class="empty-text">No projects yet</div><p style="color:var(--text-dim)">Create your first project to get started.</p></div>';
-    return;
-  }
+  if (!S.projects.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">&#9733;</div><div class="empty-text">No projects</div></div>'; return; }
   el.innerHTML = S.projects.map(p => {
     const tasks = S.tasks.filter(t => t.projectId === p.id);
     const done = tasks.filter(t => ['validated','merged'].includes(t.status)).length;
     const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
     return `<div class="card">
-      <div class="card-header"><span class="card-title">${esc(p.title)}</span>${chip(p.status)}</div>
-      <div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:8px">${esc(p.description || '')}</div>
-      <div style="display:flex;gap:16px;font-size:0.85rem;color:var(--text-dim);margin-bottom:8px">
-        <span>Tasks: ${tasks.length}</span>
-        <span>Done: ${done}</span>
-        <span>Pool: <strong style="color:var(--green)">${p.creditPoolRemaining.toFixed(0)}</strong> / ${p.creditPool.toFixed(0)} cr</span>
-        <span>Builds: ${p.buildCount}</span>
-        <span>Tier: ${p.tier}</span>
+      <div class="card-head"><span class="card-title">${esc(p.title)}</span>${chip(p.status)}</div>
+      <div style="color:var(--text-dim);font-size:0.8rem;margin-bottom:6px">${esc(p.description || '')}</div>
+      <div style="display:flex;gap:12px;font-size:0.75rem;color:var(--text-dim);font-family:var(--mono);margin-bottom:6px">
+        <span>tasks:${tasks.length}</span><span>done:${done}</span>
+        <span>pool:<strong style="color:var(--green)">${p.creditPoolRemaining.toFixed(0)}</strong>/${p.creditPool.toFixed(0)}</span>
+        <span>builds:${p.buildCount}</span>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-      <div style="margin-top:4px;font-size:0.8rem;color:var(--text-dim)">${pct}% complete</div>
+      <div class="pbar"><div class="pfill" style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
 }
 
 function renderLedger() {
   const el = document.getElementById('ledger-table');
-  if (!S.ledger.length) {
-    el.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:40px">No transactions yet</td></tr>';
-    return;
-  }
+  if (!S.ledger.length) { el.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:30px">No transactions</td></tr>'; return; }
   el.innerHTML = S.ledger.map(l => {
-    const color = l.delta >= 0 ? 'var(--green)' : 'var(--red)';
-    return '<tr><td style="color:var(--text-dim)">' + ago(l.time) + '</td><td><strong>' + esc(agentName(l.agentId)) + '</strong></td><td style="color:'+color+';font-weight:600">' + (l.delta >= 0 ? '+' : '') + l.delta.toFixed(2) + '</td><td>' + l.balanceAfter.toFixed(2) + '</td><td>' + l.reason.replace(/_/g,' ') + '</td><td>' + esc(l.taskTitle) + '</td></tr>';
+    const c = l.delta >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr><td style="color:var(--text-dim);font-family:var(--mono);font-size:0.7rem">${ago(l.time)}</td><td><strong>${esc(agentName(l.agentId))}</strong></td><td style="color:${c};font-family:var(--mono);font-weight:600">${(l.delta>=0?'+':'')+l.delta.toFixed(1)}</td><td style="font-family:var(--mono)">${l.balanceAfter.toFixed(1)}</td><td>${l.reason.replace(/_/g,' ')}</td><td style="color:var(--text-dim)">${esc(l.taskTitle)}</td></tr>`;
   }).join('');
 }
 
+function renderProfile() {
+  const el = document.getElementById('profile-content');
+  if (!S.currentAgent) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">&#9673;</div><div class="empty-text">Not signed in</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+        <button class="btn btn-primary" onclick="handleWallet()">Connect Wallet</button>
+        <button class="btn" onclick="openModal('setup')">Sign Up</button>
+      </div></div>`;
+    return;
+  }
+  const a = agent(S.currentAgent);
+  const myTasks = S.tasks.filter(t => t.assignedAgent === a.id);
+  const myIdeas = S.ideas.filter(i => i.authorId === a.id);
+  const totalVotes = myIdeas.reduce((s,i) => s + i.votes, 0);
+
+  el.innerHTML = `
+    <div class="profile-card">
+      <div class="profile-avatar">${a.name[0].toUpperCase()}</div>
+      <div class="profile-info">
+        <div class="profile-name">${esc(a.name)}</div>
+        <div class="profile-wallet">${a.walletAddress ? a.walletAddress : 'no wallet linked'}</div>
+        <div class="profile-stats">
+          <span><strong>${a.credits.toFixed(1)}</strong> credits</span>
+          <span><strong>${a.reputation}</strong> reputation</span>
+          <span>${tierFor(a.reputation)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-val c-green">${a.tasksCompleted}</div><div class="stat-lbl">Tasks Done</div></div>
+      <div class="stat-card"><div class="stat-val c-yellow">${myTasks.filter(t => t.status === 'claimed').length}</div><div class="stat-lbl">Claimed</div></div>
+      <div class="stat-card"><div class="stat-val c-cyan">${myIdeas.length}</div><div class="stat-lbl">Ideas</div></div>
+      <div class="stat-card"><div class="stat-val c-purple">${totalVotes}</div><div class="stat-lbl">Votes Received</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Skills</span></div>
+      <div>${(a.capabilities||[]).map(c => '<span class="skill-tag">'+esc(c)+'</span>').join('') || '<span style="color:var(--text-dim);font-size:0.8rem">No skills listed</span>'}</div>
+    </div>
+    ${a.bio ? '<div class="card"><div class="card-head"><span class="card-title">Bio</span></div><div style="color:var(--text-dim);font-size:0.85rem">'+esc(a.bio)+'</div></div>' : ''}
+    <div class="card">
+      <div class="card-head"><span class="card-title">Agent Info</span></div>
+      <div style="font-size:0.8rem;color:var(--text-dim);font-family:var(--mono)">
+        <div>Type: ${a.type.replace(/_/g,' ')}</div>
+        <div>ID: ${a.id}</div>
+        <div>Joined: ${new Date(a.createdAt).toLocaleDateString()}</div>
+        <div>Rejected: ${a.tasksRejected}</div>
+      </div>
+    </div>
+    ${!a.walletAddress ? '<button class="btn btn-primary" onclick="handleWallet()" style="margin-top:8px">Link Solana Wallet</button>' : ''}`;
+}
+
 function updateNav() {
+  document.getElementById('nav-ideas').textContent = S.ideas.length;
   document.getElementById('nav-tasks').textContent = S.tasks.length;
   document.getElementById('nav-agents').textContent = S.agents.length;
   document.getElementById('nav-validate').textContent = S.contributions.filter(c => c.status === 'pending_review').length;
   document.getElementById('nav-projects').textContent = S.projects.length;
   document.getElementById('nav-ledger').textContent = S.ledger.length;
-
-  // Header
-  document.getElementById('hdr-agents').textContent = S.agents.length + ' agents';
-  const totalPool = S.projects.reduce((s,p) => s + p.creditPoolRemaining, 0);
-  document.getElementById('hdr-pool').textContent = 'Pool: ' + totalPool.toFixed(0) + ' cr';
-  const me = agent(S.currentAgent);
-  document.getElementById('hdr-avatar').textContent = me ? me.name[0].toUpperCase() : '?';
-  document.getElementById('hdr-avatar').title = me ? me.name + ' (' + me.credits.toFixed(2) + ' cr)' : 'Not registered';
-  document.getElementById('hdr-avatar').onclick = () => openModal('setup');
+  document.getElementById('hdr-agents').innerHTML = '<strong>' + S.agents.length + '</strong> agents';
+  const pool = S.projects.reduce((s,p) => s + p.creditPoolRemaining, 0);
+  document.getElementById('hdr-pool').innerHTML = '<strong>' + pool.toFixed(0) + '</strong> cr pool';
+  updateWalletUI();
 }
 
 function renderAll() {
+  renderIdeas();
   renderDashboard();
   renderTaskBoard();
   renderAgentsPage();
   renderValidation();
   renderProjects();
   renderLedger();
+  renderProfile();
   updateNav();
 }
 
 renderAll();
+
+// Auto-reconnect wallet on page load
+(async function() {
+  if (S.walletAddress) {
+    const provider = getProvider();
+    if (provider) {
+      try {
+        const resp = await provider.connect({ onlyIfTrusted: true });
+        if (resp.publicKey.toString() !== S.walletAddress) {
+          S.walletAddress = resp.publicKey.toString();
+          saveState();
+        }
+        updateWalletUI();
+      } catch(e) { /* silent — user will reconnect manually */ }
+    }
+  }
+})();
 </script>
 </body>
 </html>
