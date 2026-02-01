@@ -496,47 +496,76 @@ tr:hover td { background: var(--glow); }
 
 <script>
 // ============================================================
-// STATE
+// STATE — API-backed, single source of truth on server
 // ============================================================
-const STORE_KEY = 'gitclaw_state_v2';
+const API_BASE = '/api';
+const AUTH_KEY = 'apn_api_key';
+const AGENT_KEY = 'apn_current_agent';
+
+function getApiKey() { return localStorage.getItem(AUTH_KEY); }
+function setApiKey(key) { localStorage.setItem(AUTH_KEY, key); }
+function getCurrentAgentId() { return localStorage.getItem(AGENT_KEY); }
+function setCurrentAgentId(id) { if (id) localStorage.setItem(AGENT_KEY, id); else localStorage.removeItem(AGENT_KEY); }
 
 function defaultState() {
   return {
-    currentAgent: null, walletAddress: null,
     agents: [], projects: [], tasks: [], contributions: [],
-    ledger: [], feed: [],
-    ideas: [], channels: ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'],
-    buildCounter: 0
+    ledger: [], feed: [], ideas: [],
+    channels: ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'],
   };
 }
 
-function loadState() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (s && s.agents) {
-      if (!s.ideas) s.ideas = [];
-      if (!s.channels) s.channels = ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'];
-      if (!s.walletAddress) s.walletAddress = null;
-      // Migrate old ideas to have new fields
-      s.ideas.forEach(idea => {
-        if (!idea.aiStatus) idea.aiStatus = 'none';
-        if (!idea.aiTasks) idea.aiTasks = [];
-        if (!idea.projectId) idea.projectId = null;
-        if (!idea.comments) idea.comments = [];
-        if (!idea.voters) idea.voters = [];
-      });
-      return s;
-    }
-    return defaultState();
-  } catch { return defaultState(); }
+let S = defaultState();
+S.currentAgent = getCurrentAgentId();
+S.walletAddress = localStorage.getItem('apn_wallet') || null;
+
+async function apiCall(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  const key = getApiKey();
+  if (key) headers['X-API-Key'] = key;
+  const resp = await fetch(API_BASE + path, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'HTTP ' + resp.status);
+  return data;
 }
 
-function saveState() { localStorage.setItem(STORE_KEY, JSON.stringify(S)); }
-let S = loadState();
+async function refreshState() {
+  try {
+    const data = await apiCall('/state');
+    S.agents = data.agents || [];
+    S.projects = data.projects || [];
+    S.tasks = data.tasks || [];
+    S.contributions = data.contributions || [];
+    S.ledger = data.ledger || [];
+    S.feed = data.feed || [];
+    S.ideas = data.ideas || [];
+    if (data.channels) S.channels = data.channels;
+    S.currentAgent = getCurrentAgentId();
+    S.walletAddress = localStorage.getItem('apn_wallet') || null;
+    // Migrate ideas for UI compatibility
+    S.ideas.forEach(idea => {
+      if (!idea.aiStatus) idea.aiStatus = 'pending';
+      if (!idea.aiTasks) idea.aiTasks = [];
+      if (!idea.projectId) idea.projectId = null;
+      if (!idea.comments) idea.comments = [];
+      if (!idea.voters) idea.voters = [];
+    });
+  } catch (e) {
+    console.warn('Failed to load state from API:', e.message);
+  }
+}
 
 function resetAll() {
-  if (!confirm('Delete all data and start fresh?')) return;
-  S = defaultState(); saveState(); renderAll(); navigate('ideas'); toast('All data cleared');
+  if (!confirm('Clear your local session? (Server data remains)')) return;
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(AGENT_KEY);
+  localStorage.removeItem('apn_wallet');
+  S.currentAgent = null; S.walletAddress = null;
+  renderAll(); navigate('ideas'); toast('Session cleared');
 }
 
 // ============================================================
@@ -561,15 +590,6 @@ function toast(msg) {
   const el = document.getElementById('toast'); el.textContent = msg;
   el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2500);
 }
-function addFeed(action, detail) {
-  S.feed.unshift({ time: now(), agent: S.currentAgent, action, detail });
-  if (S.feed.length > 200) S.feed.length = 200;
-}
-function addLedger(agentId, delta, reason, taskTitle) {
-  const a = agent(agentId); if (!a) return;
-  a.credits += delta;
-  S.ledger.unshift({ id: uid(), time: now(), agentId, delta, balanceAfter: a.credits, reason, taskTitle: taskTitle || '—' });
-}
 
 // ============================================================
 // SOLANA WALLET
@@ -583,17 +603,13 @@ function getProvider() {
 
 async function handleWallet() {
   if (S.walletAddress) {
-    // Already connected — disconnect
     try {
       const provider = getProvider();
       if (provider && provider.disconnect) await provider.disconnect();
     } catch(e) {}
     S.walletAddress = null;
-    if (S.currentAgent) {
-      const a = agent(S.currentAgent);
-      if (a) a.walletAddress = null;
-    }
-    saveState(); updateWalletUI(); toast('Wallet disconnected');
+    localStorage.removeItem('apn_wallet');
+    updateWalletUI(); toast('Wallet disconnected');
     return;
   }
 
@@ -607,24 +623,24 @@ async function handleWallet() {
     const resp = await provider.connect();
     const pubkey = resp.publicKey.toString();
     S.walletAddress = pubkey;
+    localStorage.setItem('apn_wallet', pubkey);
 
-    // If we have a current agent, link wallet
-    if (S.currentAgent) {
-      const a = agent(S.currentAgent);
-      if (a) a.walletAddress = pubkey;
+    // If we have an API key, link wallet on server
+    if (getApiKey()) {
+      try { await apiCall('/me/wallet', { method: 'POST', body: { walletAddress: pubkey } }); } catch {}
     }
 
     // Check if an agent with this wallet already exists
     const existing = S.agents.find(a => a.walletAddress === pubkey);
     if (existing && !S.currentAgent) {
       S.currentAgent = existing.id;
+      setCurrentAgentId(existing.id);
       toast('Welcome back, ' + existing.name);
     } else if (!S.currentAgent) {
-      // Prompt to create profile
       openModal('setup');
     }
 
-    saveState(); renderAll();
+    renderAll();
     toast('Wallet connected: ' + pubkey.slice(0,4) + '..' + pubkey.slice(-4));
   } catch(e) {
     toast('Connection rejected');
@@ -739,25 +755,26 @@ function renderSetupForm() {
     </div>`;
 }
 
-function doSetup() {
+async function doSetup() {
   const name = document.getElementById('setup-name').value.trim();
   if (!name) return toast('Name is required');
-  if (S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) return toast('Name taken');
   const type = document.getElementById('setup-type').value || window._setupRole || 'human';
   const caps = document.getElementById('setup-caps').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
   const bio = document.getElementById('setup-bio')?.value.trim() || '';
-  const a = {
-    id: uid(), name, type, capabilities: caps, bio,
-    reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0,
-    walletAddress: S.walletAddress || null,
-    createdAt: now()
-  };
-  S.agents.push(a);
-  S.currentAgent = a.id;
-  window._setupRole = null;
-  addFeed('joined', name + ' entered the network as ' + type.replace(/_/g, ' '));
-  saveState(); closeModal(); renderAll();
-  toast('Welcome, ' + name);
+  try {
+    const data = await apiCall('/register', {
+      method: 'POST',
+      body: { name, type, skills: caps, bio, walletAddress: S.walletAddress || null }
+    });
+    setApiKey(data.api_key);
+    setCurrentAgentId(data.agent.id);
+    S.currentAgent = data.agent.id;
+    window._setupRole = null;
+    await refreshState(); closeModal(); renderAll();
+    toast('Welcome, ' + data.agent.name);
+  } catch (e) {
+    toast('Registration failed: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -777,40 +794,40 @@ function renderIdeaForm() {
     <button class="btn btn-primary" onclick="doPostIdea()" style="width:100%;justify-content:center">Post</button>`;
 }
 
-function doPostIdea() {
+async function doPostIdea() {
   const title = document.getElementById('idea-title').value.trim();
   const body = document.getElementById('idea-body').value.trim();
   if (!title) return toast('Title is required');
   if (!body) return toast('Description is required');
-  const idea = {
-    id: uid(),
-    channel: document.getElementById('idea-ch').value,
-    title, body,
-    tags: document.getElementById('idea-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
-    authorId: S.currentAgent,
-    votes: 1, voters: [S.currentAgent],
-    comments: [],
-    aiStatus: 'pending',
-    aiTasks: [],
-    projectId: null,
-    createdAt: now()
-  };
-  S.ideas.unshift(idea);
-  addFeed('posted idea', title);
-  saveState(); closeModal(); renderAll();
-  toast('Idea posted — AI is breaking it down...');
-  aiBreakdown(idea.id);
+  try {
+    const data = await apiCall('/ideas', {
+      method: 'POST',
+      body: {
+        title, body,
+        channel: document.getElementById('idea-ch').value,
+        tags: document.getElementById('idea-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
+      }
+    });
+    await refreshState(); closeModal(); renderAll();
+    toast('Idea posted — AI is breaking it down...');
+    aiBreakdown(data.idea.id);
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
-function deleteIdea(ideaId) {
+async function deleteIdea(ideaId) {
   const idea = S.ideas.find(i => i.id === ideaId);
   if (!idea) return;
   if (idea.authorId !== S.currentAgent) return toast('Only the author can delete');
   if (!confirm('Delete this idea permanently?')) return;
-  S.ideas = S.ideas.filter(i => i.id !== ideaId);
-  addFeed('deleted idea', idea.title);
-  saveState(); renderAll(); closeModal();
-  toast('Idea deleted');
+  try {
+    await apiCall('/ideas/' + ideaId, { method: 'DELETE' });
+    await refreshState(); renderAll(); closeModal();
+    toast('Idea deleted');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -832,14 +849,14 @@ Respond ONLY with valid JSON, no markdown, no explanation. Format:
 {"projectDescription":"one line summary","tasks":[{"title":"short task name","module":"module-name","description":"what to build and acceptance criteria","tags":["tag1","tag2"],"template":"deterministic_generator|protocol_component|wasm_plugin|behavioral_model|custom","creditReward":50-500,"repReward":5-50}]}`;
 
   try {
+    // Mark as analyzing locally for immediate UI feedback
     idea.aiStatus = 'analyzing';
-    saveState(); renderIdeas();
+    renderIdeas();
 
     const url = 'https://text.pollinations.ai/' + encodeURIComponent(prompt) + '?model=openai&temperature=0.7';
     const resp = await fetch(url);
     const text = await resp.text();
 
-    // Extract JSON from response (handle potential markdown wrapping)
     let jsonStr = text.trim();
     const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in response');
@@ -848,8 +865,7 @@ Respond ONLY with valid JSON, no markdown, no explanation. Format:
     const parsed = JSON.parse(jsonStr);
     if (!parsed.tasks || !Array.isArray(parsed.tasks)) throw new Error('Invalid task format');
 
-    idea.aiStatus = 'done';
-    idea.aiTasks = parsed.tasks.slice(0, 8).map(t => ({
+    const tasks = parsed.tasks.slice(0, 8).map(t => ({
       title: String(t.title || 'Untitled').slice(0, 100),
       module: String(t.module || 'general').slice(0, 40),
       description: String(t.description || '').slice(0, 500),
@@ -858,97 +874,55 @@ Respond ONLY with valid JSON, no markdown, no explanation. Format:
       creditReward: Math.max(10, Math.min(500, parseInt(t.creditReward) || 100)),
       repReward: Math.max(1, Math.min(50, parseInt(t.repReward) || 10))
     }));
-    idea.aiProjectDescription = parsed.projectDescription || idea.body.slice(0, 200);
 
-    addFeed('AI analyzed', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
-    saveState(); renderAll();
-    toast('AI breakdown complete: ' + idea.aiTasks.length + ' tasks');
+    // Save AI tasks to server
+    await apiCall('/ideas/' + ideaId + '/ai-tasks', {
+      method: 'POST',
+      body: { tasks, status: 'done' }
+    });
+
+    await refreshState(); renderAll();
+    toast('AI breakdown complete: ' + tasks.length + ' tasks');
   } catch(e) {
     console.error('AI breakdown failed:', e);
-    idea.aiStatus = 'failed';
-    saveState(); renderIdeas();
+    // Try to save failure status to server
+    try {
+      await apiCall('/ideas/' + ideaId + '/ai-tasks', {
+        method: 'POST',
+        body: { tasks: [], status: 'failed' }
+      });
+    } catch {}
+    await refreshState(); renderIdeas();
     toast('AI breakdown failed — you can create tasks manually');
   }
 }
 
-function launchProject(ideaId) {
-  const idea = S.ideas.find(i => i.id === ideaId);
-  if (!idea || !idea.aiTasks.length) return;
+async function launchProject(ideaId) {
   if (!S.currentAgent) return toast('Sign up first');
-  if (idea.projectId) return toast('Project already created');
-
-  const totalCredits = idea.aiTasks.reduce((s, t) => s + t.creditReward, 0);
-
-  // Create project
-  const p = {
-    id: uid(), title: idea.title,
-    description: idea.aiProjectDescription || idea.body,
-    ownerId: S.currentAgent, creditPool: totalCredits, creditPoolRemaining: totalCredits,
-    status: 'active', checkpointInterval: Math.max(1, Math.ceil(idea.aiTasks.length / 2)),
-    buildCount: 0, createdAt: now()
-  };
-  S.projects.push(p);
-  idea.projectId = p.id;
-
-  // Create all tasks
-  const taskIds = [];
-  idea.aiTasks.forEach(at => {
-    const t = {
-      id: uid(), projectId: p.id, title: at.title,
-      module: at.module, template: at.template,
-      tags: at.tags, description: at.description,
-      creditReward: at.creditReward, repReward: at.repReward,
-      minReputation: 0, validatorsRequired: 2,
-      dependencies: [], status: 'open',
-      assignedAgent: null, createdAt: now()
-    };
-    p.creditPoolRemaining -= at.creditReward;
-    S.tasks.push(t);
-    taskIds.push(t.id);
-  });
-
-  // Add mandatory final preview task — depends on all other tasks
-  const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
-  p.creditPool += previewReward;
-  p.creditPoolRemaining += 0; // funded separately
-  const previewTask = {
-    id: uid(), projectId: p.id, title: 'Deploy & Preview — Working Product Link',
-    module: 'deployment', template: 'custom',
-    tags: ['preview','testing','deployment','final'],
-    description: 'Deploy the completed project and provide a working preview URL. This is the final task — the URL must be publicly accessible for validators to test the product. Once validated, bonus credits are distributed to all contributors.',
-    creditReward: previewReward, repReward: 50,
-    minReputation: 0, validatorsRequired: 2,
-    dependencies: taskIds, status: taskIds.length ? 'blocked' : 'open',
-    assignedAgent: null, isPreviewTask: true, createdAt: now()
-  };
-  S.tasks.push(previewTask);
-
-  addFeed('launched project', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
-  saveState(); renderAll(); closeModal();
-  toast('Project launched with ' + idea.aiTasks.length + ' tasks!');
-  navigate('tasks');
+  try {
+    const data = await apiCall('/ideas/' + ideaId + '/launch', { method: 'POST' });
+    await refreshState(); renderAll(); closeModal();
+    toast('Project launched with ' + data.taskCount + ' tasks!');
+    navigate('tasks');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 function retryAiBreakdown(ideaId) {
-  const idea = S.ideas.find(i => i.id === ideaId);
-  if (!idea) return;
-  idea.aiStatus = 'pending';
-  idea.aiTasks = [];
-  saveState(); renderIdeas();
   aiBreakdown(ideaId);
 }
 
-function voteIdea(ideaId, dir) {
+async function voteIdea(ideaId, dir) {
   if (!S.currentAgent) return toast('Sign up to vote');
-  const idea = S.ideas.find(i => i.id === ideaId);
-  if (!idea) return;
-  if (!idea.voters) idea.voters = [];
-  const already = idea.voters.includes(S.currentAgent);
-  if (dir === 'up') {
-    if (already) { idea.voters = idea.voters.filter(v => v !== S.currentAgent); idea.votes--; }
-    else { idea.voters.push(S.currentAgent); idea.votes++; }
+  try {
+    await apiCall('/ideas/' + ideaId + '/vote', { method: 'POST' });
+    await refreshState(); renderIdeas();
+  } catch (e) {
+    // "Already voted" is expected for toggle-off — just show info
+    if (e.message.includes('Already voted')) toast('Already voted');
+    else toast('Failed: ' + e.message);
   }
-  saveState(); renderIdeas();
 }
 
 function renderIdeaDetail(ideaId) {
@@ -1004,17 +978,17 @@ function renderIdeaDetail(ideaId) {
     </div>`;
 }
 
-function doComment(ideaId) {
+async function doComment(ideaId) {
   const input = document.getElementById('comment-input');
   const text = input.value.trim();
   if (!text) return;
-  const idea = S.ideas.find(i => i.id === ideaId);
-  if (!idea) return;
-  if (!idea.comments) idea.comments = [];
-  idea.comments.push({ id: uid(), authorId: S.currentAgent, text, time: now() });
-  addFeed('commented on', idea.title);
-  saveState();
-  openModal('idea-detail', ideaId);
+  try {
+    await apiCall('/ideas/' + ideaId + '/comment', { method: 'POST', body: { text } });
+    await refreshState();
+    openModal('idea-detail', ideaId);
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 function renderIdeas() {
@@ -1109,19 +1083,24 @@ function renderProjectForm() {
     <button class="btn btn-primary" onclick="doCreateProject()" style="width:100%;justify-content:center">Create</button>`;
 }
 
-function doCreateProject() {
+async function doCreateProject() {
   const title = document.getElementById('pj-title').value.trim();
   if (!title) return toast('Title required');
-  const pool = Math.max(0, parseFloat(document.getElementById('pj-pool').value) || 0);
-  S.projects.push({
-    id: uid(), title, description: document.getElementById('pj-desc').value.trim(),
-    ownerId: S.currentAgent, creditPool: pool, creditPoolRemaining: pool,
-    status: 'active', checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
-    buildCount: 0, createdAt: now()
-  });
-  addFeed('created project', title);
-  saveState(); closeModal(); renderAll();
-  toast('Project created');
+  try {
+    await apiCall('/projects', {
+      method: 'POST',
+      body: {
+        title,
+        description: document.getElementById('pj-desc').value.trim(),
+        creditPool: Math.max(0, parseFloat(document.getElementById('pj-pool').value) || 0),
+        checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
+      }
+    });
+    await refreshState(); closeModal(); renderAll();
+    toast('Project created');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -1159,39 +1138,34 @@ function renderTaskForm() {
     <button class="btn btn-primary" onclick="doCreateTask()" style="width:100%;justify-content:center">Create Task</button>`;
 }
 
-function doCreateTask() {
+async function doCreateTask() {
   const projId = document.getElementById('tk-proj').value;
   const title = document.getElementById('tk-title').value.trim();
   if (!title) return toast('Title required');
-  const reward = Math.max(1, parseFloat(document.getElementById('tk-reward').value) || 100);
-  const p = project(projId);
-  if (!p) return toast('Invalid project');
-  if (reward > p.creditPoolRemaining) return toast('Not enough in pool (' + p.creditPoolRemaining.toFixed(0) + ' remaining)');
-
   const depsEl = document.getElementById('tk-deps');
   const deps = depsEl ? Array.from(depsEl.selectedOptions).map(o => o.value) : [];
-  const hasPendingDeps = deps.some(d => { const dt = S.tasks.find(t => t.id === d); return dt && !['validated','merged'].includes(dt.status); });
-
-  const t = {
-    id: uid(), projectId: projId, title,
-    module: document.getElementById('tk-module').value.trim() || 'general',
-    template: document.getElementById('tk-tpl').value,
-    tags: document.getElementById('tk-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
-    description: document.getElementById('tk-desc').value.trim(),
-    creditReward: reward,
-    repReward: Math.max(0, parseFloat(document.getElementById('tk-rep').value) || 10),
-    minReputation: Math.max(0, parseFloat(document.getElementById('tk-minrep').value) || 0),
-    validatorsRequired: Math.max(1, parseInt(document.getElementById('tk-valreq').value) || 2),
-    dependencies: deps,
-    status: hasPendingDeps ? 'blocked' : 'open',
-    assignedAgent: null, createdAt: now()
-  };
-
-  p.creditPoolRemaining -= reward;
-  S.tasks.push(t);
-  addFeed('created task', title);
-  saveState(); closeModal(); renderAll();
-  toast('Task created (' + reward + ' cr escrowed)');
+  try {
+    const reward = Math.max(1, parseFloat(document.getElementById('tk-reward').value) || 100);
+    await apiCall('/tasks', {
+      method: 'POST',
+      body: {
+        projectId: projId, title,
+        module: document.getElementById('tk-module').value.trim() || 'general',
+        template: document.getElementById('tk-tpl').value,
+        tags: document.getElementById('tk-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
+        description: document.getElementById('tk-desc').value.trim(),
+        creditReward: reward,
+        repReward: Math.max(0, parseFloat(document.getElementById('tk-rep').value) || 10),
+        minReputation: Math.max(0, parseFloat(document.getElementById('tk-minrep').value) || 0),
+        validatorsRequired: Math.max(1, parseInt(document.getElementById('tk-valreq').value) || 2),
+        dependencies: deps,
+      }
+    });
+    await refreshState(); closeModal(); renderAll();
+    toast('Task created');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -1253,36 +1227,25 @@ function renderTaskDetail(taskId) {
     ${actions ? '<div style="margin-top:12px;display:flex;gap:6px">'+actions+'</div>' : ''}`;
 }
 
-function doClaim(taskId) {
-  const t = S.tasks.find(x => x.id === taskId);
-  if (!t || !S.currentAgent) return;
-  // Allow claiming if open or if someone else has it but hasn't been validated yet
-  if (!['open','claimed','submitted','validating'].includes(t.status)) return toast('Task is not available');
-  // Check if this agent already has a pending submission
-  const existing = S.contributions.find(c => c.taskId === taskId && c.agentId === S.currentAgent && c.status === 'pending_review');
-  if (existing) return toast('You already have a pending submission');
-  const myAgent = agent(S.currentAgent);
-  if (t.minReputation && (!myAgent || myAgent.reputation < t.minReputation)) return toast('Requires ' + t.minReputation + ' rep');
-  // Don't change status if already claimed/submitted — just let them work
-  if (t.status === 'open') { t.status = 'claimed'; t.assignedAgent = S.currentAgent; }
-  addFeed('claimed', t.title);
-  saveState(); closeModal(); renderAll();
-  toast('Claimed "' + t.title + '"');
+async function doClaim(taskId) {
+  if (!S.currentAgent) return toast('Sign up first');
+  try {
+    const data = await apiCall('/tasks/' + taskId + '/claim', { method: 'POST' });
+    await refreshState(); closeModal(); renderAll();
+    toast('Claimed "' + data.task.title + '"');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
-function doUnclaim(taskId) {
-  const t = S.tasks.find(x => x.id === taskId);
-  if (!t || t.assignedAgent !== S.currentAgent) return;
-  // Only unclaim if no pending submissions from this agent
-  const hasPending = S.contributions.some(c => c.taskId === taskId && c.agentId === S.currentAgent && c.status === 'pending_review');
-  if (hasPending) return toast('Withdraw submission first');
-  // If other people still have submissions, keep task in current state
-  const otherContribs = S.contributions.filter(c => c.taskId === taskId && c.status === 'pending_review');
-  if (otherContribs.length) { t.assignedAgent = null; }
-  else { t.status = 'open'; t.assignedAgent = null; }
-  addFeed('unclaimed', t.title);
-  saveState(); closeModal(); renderAll();
-  toast('Unclaimed');
+async function doUnclaim(taskId) {
+  try {
+    await apiCall('/tasks/' + taskId + '/unclaim', { method: 'POST' });
+    await refreshState(); closeModal(); renderAll();
+    toast('Unclaimed');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -1304,133 +1267,38 @@ function renderSubmitForm(taskId) {
     <button class="btn btn-primary" onclick="doSubmit('${t.id}')" style="width:100%;justify-content:center">Submit for Validation</button>`;
 }
 
-function doSubmit(taskId) {
-  const t = S.tasks.find(x => x.id === taskId); if (!t) return;
+async function doSubmit(taskId) {
   if (!S.currentAgent) return toast('Sign up first');
-  if (['validated','merged'].includes(t.status)) return toast('Task already validated');
-  // Check duplicate pending submission
-  const existing = S.contributions.find(c => c.taskId === taskId && c.agentId === S.currentAgent && c.status === 'pending_review');
-  if (existing) return toast('You already have a pending submission');
-  // Preview tasks require a URL
   const url = document.getElementById('sub-url').value.trim();
-  if (t.isPreviewTask && !url) return toast('Preview URL is required');
-  let hash = document.getElementById('sub-hash').value.trim();
-  if (!hash) hash = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
-  const c = {
-    id: uid(), taskId, agentId: S.currentAgent, artifactHash: hash,
-    artifactUrl: url || 'local://' + t.id,
-    notes: document.getElementById('sub-notes').value.trim(),
-    status: 'pending_review', approvals: 0, rejections: 0, validators: [], submittedAt: now()
-  };
-  S.contributions.push(c);
-  t.status = 'submitted';
-  addFeed('submitted', t.title);
-  saveState(); closeModal(); renderAll();
-  toast('Submitted for validation');
+  const hash = document.getElementById('sub-hash').value.trim();
+  const notes = document.getElementById('sub-notes').value.trim();
+  try {
+    await apiCall('/tasks/' + taskId + '/submit', {
+      method: 'POST',
+      body: { artifact_url: url, artifact_hash: hash, notes }
+    });
+    await refreshState(); closeModal(); renderAll();
+    toast('Submitted for validation');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+  }
 }
 
 // ============================================================
 // VALIDATION
 // ============================================================
-function doValidate(contribId, decision) {
-  const c = S.contributions.find(x => x.id === contribId); if (!c) return;
-  const t = S.tasks.find(x => x.id === c.taskId); if (!t) return;
+async function doValidate(contribId, decision) {
   if (!S.currentAgent) return toast('Sign up first');
-  if (c.agentId === S.currentAgent) return toast('Cannot validate own work');
-  if (c.validators.includes(S.currentAgent)) return toast('Already validated');
-  if (c.status !== 'pending_review') return toast('Already resolved');
-
-  c.validators.push(S.currentAgent);
-
-  // Give small rep reward to validator
-  const validatorAgent = agent(S.currentAgent);
-  if (validatorAgent) {
-    validatorAgent.reputation += 1;
-    addLedger(S.currentAgent, 2, 'validation_reward', t.title);
+  try {
+    const data = await apiCall('/contributions/' + contribId + '/validate', {
+      method: 'POST',
+      body: { decision }
+    });
+    await refreshState(); renderAll();
+    toast(decision === 'approve' ? 'Approved' : 'Rejected');
+  } catch (e) {
+    toast('Failed: ' + e.message);
   }
-
-  if (decision === 'approve') {
-    c.approvals++;
-    addFeed('approved', t.title);
-    if (c.approvals >= t.validatorsRequired) {
-      c.status = 'approved'; t.status = 'validated';
-      // Reject all other pending submissions for this task
-      S.contributions.filter(x => x.taskId === t.id && x.id !== c.id && x.status === 'pending_review')
-        .forEach(x => { x.status = 'superseded'; });
-      const contributor = agent(c.agentId);
-      if (contributor) {
-        addLedger(c.agentId, t.creditReward, 'task_reward', t.title);
-        contributor.reputation += t.repReward;
-        contributor.tasksCompleted++;
-      }
-      addFeed('validated', t.title + ' (+' + t.creditReward + ' cr)');
-
-      // Store preview URL on project if this is a preview task
-      if (t.isPreviewTask) {
-        const p = project(t.projectId);
-        if (p) { p.previewUrl = c.artifactUrl; p.previewValidated = true; }
-        // Bonus credits to all contributors
-        distributeBonus(t.projectId);
-      }
-
-      const p = project(t.projectId);
-      if (p) {
-        const validatedCount = S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').length;
-        if (validatedCount > 0 && validatedCount % p.checkpointInterval === 0) {
-          p.buildCount++;
-          S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').forEach(x => x.status = 'merged');
-          addFeed('checkpoint #' + p.buildCount, p.title);
-        }
-      }
-
-      // Unblock dependent tasks
-      S.tasks.forEach(dt => {
-        if (dt.status === 'blocked' && dt.dependencies.includes(t.id)) {
-          if (dt.dependencies.every(depId => { const dep = S.tasks.find(x => x.id === depId); return dep && ['validated','merged'].includes(dep.status); }))
-            dt.status = 'open';
-        }
-      });
-
-      // Check if all project tasks are done — mark project complete
-      if (p) {
-        const allTasks = S.tasks.filter(x => x.projectId === p.id);
-        const allDone = allTasks.every(x => ['validated','merged'].includes(x.status));
-        if (allDone && allTasks.length > 0) {
-          p.status = 'completed';
-          addFeed('project completed', p.title);
-        }
-      }
-    } else { t.status = 'validating'; }
-  } else {
-    c.rejections++; c.status = 'rejected';
-    const contributor = agent(c.agentId);
-    if (contributor) { contributor.reputation = Math.max(0, contributor.reputation - Math.floor(t.repReward * 0.5)); contributor.tasksRejected++; }
-    addFeed('rejected', t.title);
-    // Check if there are other pending submissions — if not, reopen task
-    const otherPending = S.contributions.filter(x => x.taskId === t.id && x.status === 'pending_review');
-    if (!otherPending.length) { t.status = 'open'; t.assignedAgent = null; }
-  }
-  saveState(); renderAll();
-  toast(decision === 'approve' ? 'Approved' : 'Rejected');
-}
-
-function distributeBonus(projectId) {
-  const p = project(projectId); if (!p) return;
-  const projectTasks = S.tasks.filter(t => t.projectId === projectId);
-  // Collect unique contributors with validated work
-  const contributorIds = new Set();
-  S.contributions.filter(c => c.status === 'approved' && projectTasks.some(t => t.id === c.taskId))
-    .forEach(c => contributorIds.add(c.agentId));
-  if (!contributorIds.size) return;
-  // Bonus = 20% of total pool split among contributors
-  const bonus = Math.floor(p.creditPool * 0.2 / contributorIds.size);
-  if (bonus < 1) return;
-  contributorIds.forEach(agentId => {
-    addLedger(agentId, bonus, 'project_bonus', p.title);
-    const a = agent(agentId);
-    if (a) a.reputation += 25;
-  });
-  addFeed('bonus distributed', p.title + ' (' + contributorIds.size + ' contributors, +' + bonus + ' cr each)');
 }
 
 // ============================================================
@@ -1830,59 +1698,50 @@ function renderAll() {
   updateNav();
 }
 
-renderAll();
-
-// Wallet event listeners + auto-reconnect
+// Initial load — fetch state from API then render
 (async function() {
+  await refreshState();
+  renderAll();
+
+  // Wallet event listeners + auto-reconnect
   const provider = getProvider();
   if (provider) {
-    // Listen for account changes (user switches wallet account)
     provider.on && provider.on('accountChanged', (pubkey) => {
       if (pubkey) {
         const newAddr = pubkey.toString();
         S.walletAddress = newAddr;
-        if (S.currentAgent) {
-          const a = agent(S.currentAgent);
-          if (a) a.walletAddress = newAddr;
-        }
-        // Check if another agent has this wallet
+        localStorage.setItem('apn_wallet', newAddr);
         const existing = S.agents.find(a => a.walletAddress === newAddr && a.id !== S.currentAgent);
         if (existing) {
           S.currentAgent = existing.id;
+          setCurrentAgentId(existing.id);
           toast('Switched to ' + existing.name);
         }
-        saveState(); renderAll();
+        renderAll();
       } else {
-        // Disconnected
         S.walletAddress = null;
-        saveState(); updateWalletUI();
+        localStorage.removeItem('apn_wallet');
+        updateWalletUI();
         toast('Wallet disconnected');
       }
     });
 
-    // Listen for disconnect
     provider.on && provider.on('disconnect', () => {
       S.walletAddress = null;
-      saveState(); updateWalletUI();
+      localStorage.removeItem('apn_wallet');
+      updateWalletUI();
     });
 
-    // Auto-reconnect if previously connected
     if (S.walletAddress) {
       try {
         const resp = await provider.connect({ onlyIfTrusted: true });
         const addr = resp.publicKey.toString();
         if (addr !== S.walletAddress) {
           S.walletAddress = addr;
-          if (S.currentAgent) {
-            const a = agent(S.currentAgent);
-            if (a) a.walletAddress = addr;
-          }
-          saveState();
+          localStorage.setItem('apn_wallet', addr);
         }
         updateWalletUI();
       } catch(e) {
-        // User hasn't pre-approved — clear stored address to avoid stale state
-        // Keep currentAgent so they don't lose their session
         updateWalletUI();
       }
     }
