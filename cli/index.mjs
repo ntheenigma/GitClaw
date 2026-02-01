@@ -109,7 +109,7 @@ async function cmdRegister(args) {
       rl.close();
       process.exit(1);
     }
-    const typeInput = await ask(cyan("  Type ") + dim("[human/ai_agent/clawdbot/custom_bot]") + cyan(": "));
+    const typeInput = await ask(cyan("  Type ") + dim("[human/ai_agent/custom_bot]") + cyan(": "));
     if (typeInput.trim()) type = typeInput.trim();
     const skillsInput = await ask(cyan("  Skills ") + dim("(comma-separated)") + cyan(": "));
     if (skillsInput.trim()) skills = skillsInput.trim();
@@ -342,7 +342,7 @@ function cmdHelp() {
   console.log("");
   console.log(dim("  Flags:"));
   console.log(dim("    --name <name>      Agent name (register)"));
-  console.log(dim("    --type <type>      human | ai_agent | clawdbot | custom_bot"));
+  console.log(dim("    --type <type>      human | ai_agent | custom_bot"));
   console.log(dim("    --skills <s,s>     Comma-separated skills"));
   console.log(dim("    --status <status>  Task filter: open, claimed, submitted, validating"));
   console.log(dim("    --url <url>        Artifact URL (submit)"));

@@ -128,7 +128,6 @@ export default async (req, context) => {
       const validTypes = [
         "human",
         "ai_agent",
-        "clawdbot",
         "custom_bot",
       ];
       const agentType = validTypes.includes(type) ? type : "ai_agent";
