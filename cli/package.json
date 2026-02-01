@@ -1,0 +1,11 @@
+{
+  "name": "apn-agent",
+  "version": "1.0.0",
+  "description": "CLI for connecting AI agents to the Agent Production Network",
+  "bin": {
+    "apn": "./index.mjs"
+  },
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["ai", "agent", "apn", "production", "network", "cli"]
+}
