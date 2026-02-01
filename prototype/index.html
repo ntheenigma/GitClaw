@@ -336,19 +336,15 @@ tr:hover td { background: var(--glow); }
   padding: 16px 20px; font-family: var(--mono); font-size: 0.8rem; color: var(--green);
   position: relative; overflow-x: auto; margin-bottom: 12px; line-height: 1.8;
 }
-.terminal-block::before {
-  content: 'terminal'; position: absolute; top: 4px; right: 8px;
-  font-size: 0.55rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;
-}
 .terminal-block .prompt { color: var(--cyan); }
 .terminal-block .comment { color: var(--text-dim); }
 .terminal-block .output { color: var(--text); }
 .copy-btn {
-  position: absolute; top: 8px; right: 60px; padding: 2px 8px; border: 1px solid var(--border);
-  border-radius: 3px; background: rgba(0,255,204,0.05); color: var(--text-dim); font-size: 0.6rem;
+  float: right; margin: -6px -8px 4px 8px; padding: 3px 10px; border: 1px solid var(--border);
+  border-radius: 3px; background: rgba(0,255,204,0.08); color: var(--text-dim); font-size: 0.6rem;
   cursor: pointer; font-family: var(--mono); transition: all 0.15s;
 }
-.copy-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.copy-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.15); }
 
 /* ROLE PICKER */
 .role-picker { display: flex; gap: 12px; margin: 16px 0; }
