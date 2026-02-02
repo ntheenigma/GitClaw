@@ -781,22 +781,25 @@ async function quickJoin(type) {
     walletAddress: S.walletAddress || null, createdAt: now(),
   };
   await gunPut('agents', a.id, a);
-  S.agents.push({...a, capabilities: []});
   S.currentAgent = a.id;
   setCurrentAgentId(a.id);
   addFeedGun(a.id, 'joined', name + ' entered the network');
   apiCall('/register', { method: 'POST', body: { name, type: type || 'human', skills: [] } })
     .then(data => { if (data?.api_key) setApiKey(data.api_key); });
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Welcome, ' + name + '!');
   return a;
 }
 
 // ── Seed initial ideas on first load ──
 async function seedIdeas() {
-  if (S.ideas.length > 0) return; // Already has ideas
-  // Create a system agent for seeding
-  let sys = S.agents.find(a => a.name === 'apn-system');
+  // Check GUN directly — don't rely on S.ideas which may not be loaded yet
+  const existingIdeas = await gunLoadAll('ideas');
+  if (existingIdeas.length > 0) return;
+
+  // Check for existing system agent in GUN too
+  const existingAgents = await gunLoadAll('agents');
+  let sys = existingAgents.find(a => a.name === 'apn-system');
   if (!sys) {
     sys = {
       id: uid(), name: 'apn-system', type: 'ai_agent', capabilities: 'system,seed',
@@ -804,7 +807,6 @@ async function seedIdeas() {
       tasksCompleted: 0, tasksRejected: 0, walletAddress: null, createdAt: now(),
     };
     await gunPut('agents', sys.id, sys);
-    S.agents.push({...sys, capabilities: ['system','seed']});
   }
 
   const seedData = [
@@ -845,11 +847,12 @@ Traditional platforms like Dataminr are centralized, expensive, and gatekept. We
       comments: '', aiStatus: 'pending', aiTasks: '', projectId: null, createdAt: now(),
     };
     await gunPut('ideas', idea.id, idea);
-    S.ideas.unshift({...idea, tags: sd.tags.split(','), voters: [sys.id], comments: [], aiTasks: []});
     addFeedGun(sys.id, 'posted idea', idea.title);
-    // Kick off AI breakdown
-    setTimeout(() => aiBreakdown(idea.id), 500);
+    // Kick off AI breakdown after refresh
+    const ideaId = idea.id;
+    setTimeout(() => aiBreakdown(ideaId), 500);
   }
+  await refreshState();
   renderAll();
 }
 
@@ -1037,7 +1040,6 @@ async function doSetup() {
     walletAddress: S.walletAddress || null, createdAt: now(),
   };
   await gunPut('agents', a.id, a);
-  S.agents.push(a);
   S.currentAgent = a.id;
   setCurrentAgentId(a.id);
   window._setupRole = null;
@@ -1045,7 +1047,7 @@ async function doSetup() {
   // Also register with API for CLI access
   apiCall('/register', { method: 'POST', body: { name, type, skills: caps, bio, walletAddress: S.walletAddress } })
     .then(data => { if (data?.api_key) setApiKey(data.api_key); });
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Welcome, ' + name);
 }
 
@@ -1079,9 +1081,8 @@ async function doPostIdea() {
     comments: '', aiStatus: 'pending', aiTasks: '', projectId: null, createdAt: now(),
   };
   await gunPut('ideas', idea.id, idea);
-  S.ideas.unshift({...idea, tags, voters: [S.currentAgent], comments: [], aiTasks: []});
   addFeedGun(S.currentAgent, 'posted idea', title);
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Idea posted — AI is breaking it down...');
   aiBreakdown(idea.id);
 }
@@ -1172,7 +1173,6 @@ async function launchProject(ideaId) {
     buildCount: 0, createdAt: now(),
   };
   await gunPut('projects', p.id, p);
-  S.projects.push(p);
 
   const taskIds = [];
   for (const at of idea.aiTasks) {
@@ -1185,11 +1185,10 @@ async function launchProject(ideaId) {
     };
     p.creditPoolRemaining -= t.creditReward;
     await gunPut('tasks', t.id, t);
-    S.tasks.push({...t, tags: at.tags || [], dependencies: []});
     taskIds.push(t.id);
   }
 
-  // Preview task
+  // Preview task — final task, working app link required
   const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
   p.creditPool += previewReward;
   const previewTask = {
@@ -1201,14 +1200,13 @@ async function launchProject(ideaId) {
     assignedAgent: null, isPreviewTask: true, createdAt: now(),
   };
   await gunPut('tasks', previewTask.id, previewTask);
-  S.tasks.push({...previewTask, tags: ['preview','testing','deployment','final'], dependencies: taskIds});
 
   idea.projectId = p.id;
   await gunPut('ideas', idea.id, { ...idea, projectId: p.id, aiTasks: JSON.stringify(idea.aiTasks), tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, voters: Array.isArray(idea.voters) ? idea.voters.join(',') : idea.voters, comments: JSON.stringify(idea.comments || []) });
   await gunPut('projects', p.id, p);
 
   addFeedGun(S.currentAgent, 'launched project', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
-  renderAll(); closeModal();
+  await refreshState(); renderAll(); closeModal();
   toast('Project launched with ' + idea.aiTasks.length + ' tasks!');
   navigate('tasks');
 }
@@ -1396,9 +1394,8 @@ async function doCreateProject() {
     buildCount: 0, createdAt: now(),
   };
   await gunPut('projects', p.id, p);
-  S.projects.push(p);
   addFeedGun(S.currentAgent, 'created project', title);
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Project created');
 }
 
@@ -1464,9 +1461,8 @@ async function doCreateTask() {
   p.creditPoolRemaining -= reward;
   await gunPut('tasks', t.id, t);
   await gunPut('projects', p.id, p);
-  S.tasks.push({...t, tags, dependencies: deps});
   addFeedGun(S.currentAgent, 'created task', title);
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Task created (' + reward + ' cr escrowed)');
 }
 
@@ -1593,11 +1589,10 @@ async function doSubmit(taskId) {
     status: 'pending_review', approvals: 0, rejections: 0, validators: '', submittedAt: now(),
   };
   await gunPut('contributions', c.id, c);
-  S.contributions.push({...c, validators: []});
   t.status = 'submitted';
   await gunPut('tasks', t.id, {...t, tags: Array.isArray(t.tags) ? t.tags.join(',') : t.tags, dependencies: Array.isArray(t.dependencies) ? t.dependencies.join(',') : t.dependencies});
   addFeedGun(S.currentAgent, 'submitted', t.title);
-  closeModal(); renderAll();
+  await refreshState(); closeModal(); renderAll();
   toast('Submitted for validation');
 }
 
@@ -1780,30 +1775,51 @@ function renderDashboard() {
   const openT = S.tasks.filter(t => t.status === 'open').length;
   const credDist = S.ledger.filter(l => l.reason === 'task_reward').reduce((s,l) => s + l.delta, 0);
   const pct = total ? Math.round(((validated + merged) / total) * 100) : 0;
+  const completedProjects = S.projects.filter(p => p.status === 'completed').length;
+  const previewLinks = S.projects.filter(p => p.previewUrl && p.previewValidated).length;
 
-  let html = '<div class="stats-row">';
-  html += '<div class="stat-card"><div class="stat-val c-green">' + (validated+merged) + '</div><div class="stat-lbl">Validated</div></div>';
-  html += '<div class="stat-card"><div class="stat-val c-cyan">' + inProg + '</div><div class="stat-lbl">In Progress</div></div>';
-  html += '<div class="stat-card"><div class="stat-val c-yellow">' + openT + '</div><div class="stat-lbl">Open</div></div>';
-  html += '<div class="stat-card"><div class="stat-val c-purple">' + credDist.toFixed(0) + '</div><div class="stat-lbl">Distributed</div></div>';
+  // Network stats bar — always visible, alive
+  let html = '<div class="live-stats" style="margin-bottom:12px">';
+  html += '<div class="live-stat"><div class="live-stat-val">' + S.agents.length + '</div><div class="live-stat-lbl">Agents</div></div>';
+  html += '<div class="live-stat"><div class="live-stat-val green">' + openT + '</div><div class="live-stat-lbl">Open Tasks</div></div>';
+  html += '<div class="live-stat"><div class="live-stat-val" style="color:var(--green)">' + (validated+merged) + '</div><div class="live-stat-lbl">Validated</div></div>';
+  html += '<div class="live-stat"><div class="live-stat-val yellow">' + S.projects.length + '</div><div class="live-stat-lbl">Projects</div></div>';
+  html += '<div class="live-stat"><div class="live-stat-val purple">' + S.contributions.length + '</div><div class="live-stat-lbl">Submissions</div></div>';
+  html += '<div class="live-stat"><div class="live-stat-val">' + S.ideas.length + '</div><div class="live-stat-lbl">Ideas</div></div>';
   html += '</div>';
 
+  // Flow diagram
+  html += '<div class="flow-diagram" style="margin-bottom:14px">';
+  html += '<div class="flow-node"><div class="flow-node-title">Ideas</div><div class="flow-node-val">' + S.ideas.length + '</div></div>';
+  html += '<div class="flow-connector"></div>';
+  html += '<div class="flow-node active"><div class="flow-node-title">Tasks</div><div class="flow-node-val">' + total + '</div><div class="flow-node-sub">' + openT + ' open</div></div>';
+  html += '<div class="flow-connector"></div>';
+  html += '<div class="flow-node"><div class="flow-node-title">Building</div><div class="flow-node-val">' + inProg + '</div><div class="flow-node-sub">in progress</div></div>';
+  html += '<div class="flow-connector"></div>';
+  html += '<div class="flow-node"><div class="flow-node-title">Shipped</div><div class="flow-node-val" style="color:var(--green)">' + (validated+merged) + '</div><div class="flow-node-sub">' + previewLinks + ' live apps</div></div>';
+  html += '</div>';
+
+  // Progress bar
   if (total) {
-    html += '<div class="card"><div class="card-head"><span class="card-title">Progress</span><span style="color:var(--green);font-family:var(--mono);font-size:0.8rem">' + pct + '%</span></div>';
-    html += '<div class="pbar"><div class="pfill" style="width:' + pct + '%"></div></div></div>';
+    html += '<div class="card" style="margin-bottom:10px"><div class="card-head"><span class="card-title"><span class="pulse-dot"></span> Network Progress</span><span style="color:var(--green);font-family:var(--mono);font-size:0.85rem;font-weight:700">' + pct + '%</span></div>';
+    html += '<div class="pbar" style="height:5px"><div class="pfill" style="width:' + pct + '%"></div></div>';
+    html += '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.65rem;font-family:var(--mono);color:var(--text-dim)"><span>' + (validated+merged) + '/' + total + ' tasks done</span><span>' + credDist.toFixed(0) + ' cr distributed</span>' + (completedProjects ? '<span style="color:var(--green)">' + completedProjects + ' projects completed</span>' : '') + '</div>';
+    html += '</div>';
   }
 
-  html += '<div class="card"><div class="card-head"><span class="card-title">Activity</span></div>';
+  // Activity feed
+  html += '<div class="card"><div class="card-head"><span class="card-title"><span class="pulse-ring"></span> Live Activity</span><span style="font-family:var(--mono);font-size:0.65rem;color:var(--text-dim)">' + S.feed.length + ' events</span></div>';
   if (S.feed.length) {
     html += S.feed.slice(0,25).map(f => {
-      const color = f.action.includes('validated') || f.action.includes('approved') ? 'var(--green)' :
-                    f.action.includes('claimed') ? 'var(--yellow)' :
-                    f.action.includes('rejected') ? 'var(--red)' :
-                    f.action.includes('checkpoint') ? 'var(--purple)' : 'var(--cyan)';
-      return '<div class="feed-item"><div class="feed-dot" style="background:'+color+'"></div><div class="feed-text"><strong>' + esc(agentName(f.agent)) + '</strong> ' + esc(f.action) + ' <strong>' + esc(f.detail) + '</strong></div><span class="feed-time">' + ago(f.time) + '</span></div>';
+      const color = (f.action||'').includes('validated') || (f.action||'').includes('approved') ? 'var(--green)' :
+                    (f.action||'').includes('claimed') ? 'var(--yellow)' :
+                    (f.action||'').includes('rejected') ? 'var(--red)' :
+                    (f.action||'').includes('checkpoint') || (f.action||'').includes('bonus') ? 'var(--purple)' :
+                    (f.action||'').includes('launched') || (f.action||'').includes('completed') ? 'var(--green)' : 'var(--cyan)';
+      return '<div class="feed-item"><div class="feed-dot" style="background:'+color+'"></div><div class="feed-text"><strong>' + esc(agentName(f.agent)) + '</strong> ' + esc(f.action||'') + ' <strong>' + esc(f.detail||'') + '</strong></div><span class="feed-time">' + ago(f.time) + '</span></div>';
     }).join('');
   } else {
-    html += '<div style="padding:16px;color:var(--text-dim);text-align:center;font-size:0.8rem">No activity yet</div>';
+    html += '<div style="padding:16px;color:var(--text-dim);text-align:center;font-size:0.8rem">No activity yet — post an idea to get started</div>';
   }
   html += '</div>';
   el.innerHTML = html;
