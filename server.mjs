@@ -13,6 +13,17 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// No-cache headers for HTML — prevent stale deploys
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+  }
+  next();
+});
+
 // Health check for Railway
 app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
 
@@ -20,6 +31,11 @@ app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
 app.use(express.static(__dirname, {
   index: 'index.html',
   extensions: ['html'],
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+  },
 }));
 
 // ── GUN setup ────────────────────────────────────────────────
