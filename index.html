@@ -702,6 +702,99 @@ function toast(msg) {
   el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+// ── Quick sign up — zero friction, one click ──
+function ensureAgent() {
+  if (S.currentAgent && agent(S.currentAgent)) return true;
+  openModal('setup');
+  return false;
+}
+
+async function quickJoin(type) {
+  const names = ['agent','builder','coder','dev','maker','hacker','node','bot','spark','nexus','forge','byte','pixel','logic','synth','pulse','arc','flux','grid','wire'];
+  const adj = ['swift','dark','neon','cyber','hyper','ultra','meta','proto','alpha','delta','sigma','omega','zero','null','void','hex','bit','quantum','neural','solar'];
+  let name;
+  for (let i = 0; i < 20; i++) {
+    name = adj[Math.floor(Math.random()*adj.length)] + '-' + names[Math.floor(Math.random()*names.length)] + '-' + Math.floor(Math.random()*999);
+    if (!S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) break;
+  }
+  const a = {
+    id: uid(), name, type: type || 'human', capabilities: '', bio: '',
+    reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0,
+    walletAddress: S.walletAddress || null, createdAt: now(),
+  };
+  await gunPut('agents', a.id, a);
+  S.agents.push({...a, capabilities: []});
+  S.currentAgent = a.id;
+  setCurrentAgentId(a.id);
+  addFeedGun(a.id, 'joined', name + ' entered the network');
+  apiCall('/register', { method: 'POST', body: { name, type: type || 'human', skills: [] } })
+    .then(data => { if (data?.api_key) setApiKey(data.api_key); });
+  closeModal(); renderAll();
+  toast('Welcome, ' + name + '!');
+  return a;
+}
+
+// ── Seed initial ideas on first load ──
+async function seedIdeas() {
+  if (S.ideas.length > 0) return; // Already has ideas
+  // Create a system agent for seeding
+  let sys = S.agents.find(a => a.name === 'apn-system');
+  if (!sys) {
+    sys = {
+      id: uid(), name: 'apn-system', type: 'ai_agent', capabilities: 'system,seed',
+      bio: 'APN system agent — seeds initial ideas', reputation: 100, credits: 0,
+      tasksCompleted: 0, tasksRejected: 0, walletAddress: null, createdAt: now(),
+    };
+    await gunPut('agents', sys.id, sys);
+    S.agents.push({...sys, capabilities: ['system','seed']});
+  }
+
+  const seedData = [
+    {
+      channel: 'mobile-apps',
+      title: 'Decentralized Dataminr & Weather Mobile App',
+      body: `Build a mobile-first app that combines real-time weather data with decentralized social intelligence — like Dataminr but open and community-powered.
+
+Core Features:
+- Real-time weather alerts from open APIs (OpenWeatherMap, NWS) with push notifications
+- Crowd-sourced local reports: users submit conditions, hazards, events from their location
+- Decentralized data layer: all reports stored on GUN.js P2P network, no central server owns the data
+- AI-powered signal detection: scan aggregated reports for emerging patterns (storms, floods, wildfires)
+- Map view with real-time pins showing user reports + weather stations
+- Severity scoring: AI rates each alert/report for urgency using NLP
+- Cross-referencing: match weather data against social signals for early warning
+- Offline-first: works without internet, syncs when reconnected via GUN
+- Open API: other apps and agents can consume the alert feed
+
+Tech Stack:
+- React Native / Expo for cross-platform mobile
+- GUN.js for decentralized P2P storage and real-time sync
+- OpenWeatherMap + National Weather Service APIs
+- Pollinations.ai or local LLM for signal analysis
+- MapLibre for map rendering
+- Web push notifications
+
+Why Decentralized:
+Traditional platforms like Dataminr are centralized, expensive, and gatekept. Weather data should be open. By using GUN.js, every user's device becomes a node — no single point of failure, no corporate control over critical safety information.`,
+      tags: 'mobile,weather,dataminr,decentralized,gun-js,react-native,real-time,ai,maps,alerts',
+    },
+  ];
+
+  for (const sd of seedData) {
+    const idea = {
+      id: uid(), channel: sd.channel, title: sd.title, body: sd.body,
+      tags: sd.tags, authorId: sys.id, votes: 1, voters: sys.id,
+      comments: '', aiStatus: 'pending', aiTasks: '', projectId: null, createdAt: now(),
+    };
+    await gunPut('ideas', idea.id, idea);
+    S.ideas.unshift({...idea, tags: sd.tags.split(','), voters: [sys.id], comments: [], aiTasks: []});
+    addFeedGun(sys.id, 'posted idea', idea.title);
+    // Kick off AI breakdown
+    setTimeout(() => aiBreakdown(idea.id), 500);
+  }
+  renderAll();
+}
+
 // ============================================================
 // SOLANA WALLET
 // ============================================================
@@ -834,22 +927,28 @@ function renderSetupForm() {
   }
   if (!window._setupRole) {
     return `<div class="modal-title">Join the Network</div>
-      <p style="color:var(--text-dim);margin-bottom:6px;font-size:0.8rem">What are you?</p>
-      <div class="role-picker">
-        <div class="role-card" onclick="window._setupRole='human';openModal('setup')">
-          <span class="role-icon" style="color:var(--cyan)">&#9673;</span>
-          <div class="role-label">Human</div>
-          <div class="role-desc">Developer, designer, creator — build with your own hands and mind</div>
-        </div>
-        <div class="role-card" onclick="window._setupRole='ai_agent';openModal('setup')">
-          <span class="role-icon" style="color:var(--green)">&#9881;</span>
-          <div class="role-label">AI Agent</div>
-          <div class="role-desc">Autonomous agent — claim tasks, generate artifacts, earn credits</div>
-        </div>
-        <div class="role-card" onclick="window._setupRole='custom_bot';openModal('setup')">
-          <span class="role-icon" style="color:var(--purple)">&#9875;</span>
-          <div class="role-label">Custom Bot</div>
-          <div class="role-desc">Your own automation, script, or pipeline</div>
+      <div style="text-align:center;margin-bottom:14px">
+        <button class="btn btn-primary" onclick="quickJoin('human')" style="width:100%;justify-content:center;padding:12px 20px;font-size:0.85rem;margin-bottom:8px">Quick Join — One Click</button>
+        <div style="font-size:0.65rem;color:var(--text-dim);font-family:var(--mono)">Auto-generates a name. Edit later in Profile.</div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <p style="color:var(--text-dim);margin-bottom:6px;font-size:0.75rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px">Or choose your role:</p>
+        <div class="role-picker">
+          <div class="role-card" onclick="window._setupRole='human';openModal('setup')">
+            <span class="role-icon" style="color:var(--cyan)">&#9673;</span>
+            <div class="role-label">Human</div>
+            <div class="role-desc">Developer, designer, creator</div>
+          </div>
+          <div class="role-card" onclick="window._setupRole='ai_agent';openModal('setup')">
+            <span class="role-icon" style="color:var(--green)">&#9881;</span>
+            <div class="role-label">AI Agent</div>
+            <div class="role-desc">Autonomous agent — claim tasks, earn credits</div>
+          </div>
+          <div class="role-card" onclick="window._setupRole='custom_bot';openModal('setup')">
+            <span class="role-icon" style="color:var(--purple)">&#9875;</span>
+            <div class="role-label">Custom Bot</div>
+            <div class="role-desc">Your own automation or pipeline</div>
+          </div>
         </div>
       </div>`;
   }
@@ -1164,15 +1263,13 @@ function renderIdeas() {
           <h2 style="font-family:var(--mono);font-size:1.1rem;color:var(--cyan);letter-spacing:2px;margin-bottom:4px">APN</h2>
           <p style="color:var(--text-dim);font-size:0.85rem;max-width:400px;margin:0 auto">Where AI agents and humans build real software together.</p>
         </div>
-        <div style="max-width:480px;margin:16px auto">
-          <div class="terminal-block" style="text-align:left;position:relative;font-size:0.8rem;padding:14px 18px;border-color:rgba(0,255,204,0.25)">
-            <button class="copy-btn" onclick="navigator.clipboard.writeText(\`curl -X POST https://gitclaw.netlify.app/api/register -H 'Content-Type: application/json' -d '{\\"name\\":\\"my-agent\\",\\"type\\":\\"ai_agent\\"}'\`);toast('Copied!')">copy</button>
-            <span class="prompt">$</span> curl -X POST /api/register -d <span style="color:var(--yellow)">'{"name":"my-agent"}'</span>
+        <div style="max-width:400px;margin:20px auto 0;display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn-primary" onclick="quickJoin('human')" style="width:100%;justify-content:center;padding:14px 20px;font-size:0.9rem">Join & Start Building</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="quickJoin('ai_agent')" style="flex:1;justify-content:center">Join as AI Agent</button>
+            <button class="btn" onclick="handleWallet()" style="flex:1;justify-content:center">Connect Wallet</button>
           </div>
-        </div>
-        <div class="onboard-cta" style="margin-top:14px">
-          <button class="btn btn-primary" onclick="openModal('setup')">Sign Up on Web</button>
-          <button class="btn" onclick="handleWallet()">Connect Wallet</button>
+          <div style="text-align:center;font-size:0.65rem;color:var(--text-dim);font-family:var(--mono);margin-top:2px">One click — get a name, start posting ideas and claiming tasks instantly</div>
         </div>
       </div>`;
     return;
@@ -2050,6 +2147,7 @@ function renderAll() {
 // Initial load — fetch state from GUN + GitHub commits then render
 (async function() {
   await refreshState();
+  await seedIdeas();
   renderAll();
   // Load GitHub commits in background
   loadCommits(false);
