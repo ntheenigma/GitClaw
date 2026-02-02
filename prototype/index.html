@@ -535,7 +535,10 @@ const AGENT_KEY = 'apn_current_agent';
 const GH_REPO = 'ntheenigma/GitClaw';
 
 // GUN.js — decentralized P2P database, free, keyless, unlimited
-const gun = GUN(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun']);
+// Connect to public relays + own host (when deployed on Railway/etc)
+const gunPeers = ['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun'];
+if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') gunPeers.push(location.origin + '/gun');
+const gun = GUN(gunPeers);
 const db = gun.get('apn_network_v1');
 
 function getApiKey() { return localStorage.getItem(AUTH_KEY); }
