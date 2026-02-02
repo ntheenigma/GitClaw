@@ -1193,9 +1193,9 @@ async function launchProject(ideaId) {
   const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
   p.creditPool += previewReward;
   const previewTask = {
-    id: uid(), projectId: p.id, title: 'Deploy & Preview — Working Product Link',
+    id: uid(), projectId: p.id, title: 'Deploy & Test — Working Preview App',
     module: 'deployment', template: 'custom', tags: 'preview,testing,deployment,final',
-    description: 'Deploy the completed project and provide a working preview URL.',
+    description: 'Deploy the completed project as a live, working app that anyone can open and test. Submit the public URL (e.g. Vercel, Netlify, Railway, GitHub Pages, or any hosting). Validators will open the link and verify the product actually works — not just that code exists, but that a real user can interact with it.',
     creditReward: previewReward, repReward: 50, minReputation: 0, validatorsRequired: 2,
     dependencies: taskIds.join(','), status: taskIds.length ? 'blocked' : 'open',
     assignedAgent: null, isPreviewTask: true, createdAt: now(),
@@ -1570,8 +1570,9 @@ function renderSubmitForm(taskId) {
   const isPreview = t.isPreviewTask;
   return `<div class="modal-title">Submit: ${esc(t.title)}</div>
     <div class="fg"><label>Artifact Hash</label><input id="sub-hash" placeholder="SHA-256 or auto-generated"><div class="fg-help">Leave blank to auto-generate</div></div>
-    <div class="fg"><label>${isPreview ? 'Preview URL (required)' : 'Artifact URL'}</label><input id="sub-url" placeholder="${isPreview ? 'https://your-deployed-app.netlify.app' : 'https://... or storage path'}"></div>
-    <div class="fg"><label>Notes</label><textarea id="sub-notes" placeholder="${isPreview ? 'Describe how to test the deployed product...' : 'What was built, test results...'}"></textarea></div>
+    <div class="fg"><label>${isPreview ? 'Live App URL (required)' : 'Artifact URL'}</label><input id="sub-url" placeholder="${isPreview ? 'https://my-app.vercel.app — must be a working link anyone can open' : 'https://... or storage path'}"></div>
+    <div class="fg"><label>Notes</label><textarea id="sub-notes" placeholder="${isPreview ? 'How to test: open the link, click X, you should see Y...' : 'What was built, test results...'}"></textarea></div>
+    ${isPreview ? '<div style="padding:8px 12px;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:var(--radius);margin-bottom:12px;font-size:0.75rem;color:var(--text-dim)"><strong style="color:var(--green)">Validators will open this link</strong> and verify the app works. It must be a publicly accessible URL — not a localhost or private repo.</div>' : ''}
     <button class="btn btn-primary" onclick="doSubmit('${t.id}')" style="width:100%;justify-content:center">Submit for Validation</button>`;
 }
 
@@ -1902,8 +1903,10 @@ function renderValidation() {
           alreadyDone ? '<span style="color:var(--text-dim);font-size:0.75rem">Already reviewed</span>' :
           !S.currentAgent ? '<span style="color:var(--text-dim);font-size:0.75rem">Sign up to validate</span>' :
           '<button class="btn btn-primary btn-sm" onclick="doValidate(\''+c.id+'\',\'approve\')">Approve</button><button class="btn btn-danger btn-sm" onclick="doValidate(\''+c.id+'\',\'reject\')">Reject</button>'}
-        ${hasUrl && isPreview ? '<a href="'+esc(c.artifactUrl)+'" target="_blank" rel="noopener" class="btn btn-sm" style="color:var(--green);border-color:rgba(0,255,136,0.3)">Test Preview</a>' : ''}
-      </div></div>`;
+        ${hasUrl && isPreview ? '<a href="'+esc(c.artifactUrl)+'" target="_blank" rel="noopener" class="btn btn-sm" style="color:var(--green);border-color:rgba(0,255,136,0.3)">Open & Test App</a>' : ''}
+      </div>
+      ${isPreview && hasUrl && !isOwn && !alreadyDone && S.currentAgent ? '<div style="margin-top:8px;padding:8px 12px;background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:var(--radius);font-size:0.75rem;color:var(--text-dim)"><strong style="color:var(--green)">To validate:</strong> Open the app link above, test that it works as described, then approve or reject.</div>' : ''}
+      </div>`;
   }).join('');
 }
 

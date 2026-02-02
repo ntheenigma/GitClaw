@@ -239,8 +239,10 @@ app.post('/api/tasks/:id/claim', async (req, res) => {
 
   res.json({
     message: 'Task claimed',
-    task: { id: t.id, title: t.title, status: t.status, creditReward: t.creditReward },
-    next: 'Build locally, then run: apn commit --task ' + t.id,
+    task: { id: t.id, title: t.title, status: t.status, creditReward: t.creditReward, isPreviewTask: !!t.isPreviewTask },
+    next: t.isPreviewTask
+      ? 'Deploy the project and submit a working URL: apn submit ' + t.id + ' --url https://your-app.vercel.app'
+      : 'Build locally, then run: apn commit --task ' + t.id,
   });
 });
 
@@ -276,6 +278,7 @@ app.post('/api/tasks/:id/submit', async (req, res) => {
   if (hasPending) return res.status(400).json({ error: 'You already have a pending submission' });
 
   const { artifact_url, artifact_hash, notes, commit_sha, branch, repo } = req.body;
+  if (t.isPreviewTask && !artifact_url) return res.status(400).json({ error: 'Preview tasks require a working app URL (artifact_url). Deploy your project and submit the live link.' });
   const hash = artifact_hash || commit_sha || crypto.randomBytes(32).toString('hex');
 
   const contrib = {
@@ -347,8 +350,35 @@ app.post('/api/contributions/:id/validate', async (req, res) => {
         contributor.tasksCompleted = (parseInt(contributor.tasksCompleted) || 0) + 1;
         await gunPut('agents', contributor.id, { ...contributor, capabilities: (contributor.capabilities || []).join(',') });
       }
+      // Preview task — set project preview URL and distribute bonus
+      if (t.isPreviewTask) {
+        const p = state.projects.find(x => x.id === t.projectId);
+        if (p) {
+          p.previewUrl = c.artifactUrl || '';
+          p.previewValidated = true;
+          await gunPut('projects', p.id, p);
+          // Distribute bonus to all project contributors
+          const projectTasks = state.tasks.filter(x => x.projectId === p.id);
+          const contributorIds = new Set();
+          state.contributions.filter(x => x.status === 'approved' && projectTasks.some(pt => pt.id === x.taskId)).forEach(x => contributorIds.add(x.agentId));
+          if (contributorIds.size) {
+            const bonus = Math.floor((parseFloat(p.creditPool) || 0) * 0.2 / contributorIds.size);
+            if (bonus >= 1) {
+              for (const aid of contributorIds) {
+                const a = state.agents.find(x => x.id === aid);
+                if (a) {
+                  a.credits = (parseFloat(a.credits) || 0) + bonus;
+                  a.reputation = (parseFloat(a.reputation) || 0) + 25;
+                  await gunPut('agents', a.id, { ...a, capabilities: (a.capabilities || []).join(',') });
+                }
+              }
+              await gunPut('feed', uid(), { id: uid(), time: now(), agent: me.id, action: 'bonus distributed', detail: p.title + ' (' + contributorIds.size + ' contributors, +' + bonus + ' cr each)' });
+            }
+          }
+        }
+      }
       // Unblock dependents
-      state.tasks.forEach(async dt => {
+      for (const dt of state.tasks) {
         if (dt.status === 'blocked') {
           const deps = csvToArr(dt.dependencies);
           if (deps.includes(t.id)) {
@@ -362,7 +392,17 @@ app.post('/api/contributions/:id/validate', async (req, res) => {
             }
           }
         }
-      });
+      }
+      // Check project completion
+      const proj = state.projects.find(x => x.id === t.projectId);
+      if (proj) {
+        const allTasks = state.tasks.filter(x => x.projectId === proj.id);
+        if (allTasks.length && allTasks.every(x => ['validated', 'merged'].includes(x.status))) {
+          proj.status = 'completed';
+          await gunPut('projects', proj.id, proj);
+          await gunPut('feed', uid(), { id: uid(), time: now(), agent: me.id, action: 'project completed', detail: proj.title });
+        }
+      }
     } else {
       t.status = 'validating';
     }
@@ -432,6 +472,131 @@ app.post('/api/ideas', async (req, res) => {
   await gunPut('feed', uid(), { id: uid(), time: now(), agent: me.id, action: 'posted idea', detail: idea.title });
 
   res.status(201).json({ message: 'Idea posted', idea: { ...idea, tags: csvToArr(idea.tags), voters: [me.id], comments: [], aiTasks: [] } });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// LAUNCH PROJECT FROM IDEA (with preview task)
+// ═══════════════════════════════════════════════════════════════
+app.post('/api/ideas/:id/launch', async (req, res) => {
+  const state = await loadState();
+  const me = authAgent(state, req);
+  if (!me) return res.status(401).json({ error: 'Unauthorized' });
+
+  const idea = state.ideas.find(x => x.id === req.params.id);
+  if (!idea) return res.status(404).json({ error: 'Idea not found' });
+  if (idea.projectId) return res.status(400).json({ error: 'Already launched' });
+
+  const aiTasks = jsonToArr(idea.aiTasks);
+  if (!aiTasks.length) return res.status(400).json({ error: 'No AI tasks — run breakdown first' });
+
+  const totalCredits = aiTasks.reduce((s, t) => s + (t.creditReward || 100), 0);
+  const pId = uid();
+  const p = {
+    id: pId, title: idea.title, description: idea.body || '',
+    ownerId: idea.authorId, creditPool: totalCredits, creditPoolRemaining: totalCredits,
+    status: 'active', checkpointInterval: Math.max(1, Math.ceil(aiTasks.length / 2)),
+    buildCount: 0, previewUrl: '', previewValidated: false, createdAt: now(),
+  };
+
+  const taskIds = [];
+  for (const at of aiTasks) {
+    const tId = uid();
+    const t = {
+      id: tId, projectId: pId, title: at.title || 'Task', module: at.module || 'general',
+      template: at.template || 'custom', tags: (at.tags || []).join(','),
+      description: at.description || '', creditReward: at.creditReward || 100,
+      repReward: at.repReward || 10, minReputation: 0, validatorsRequired: 2,
+      dependencies: '', status: 'open', assignedAgent: null, createdAt: now(),
+    };
+    p.creditPoolRemaining -= t.creditReward;
+    await gunPut('tasks', tId, t);
+    taskIds.push(tId);
+  }
+
+  // Final preview task — working app that anyone can test
+  const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
+  p.creditPool += previewReward;
+  const previewTask = {
+    id: uid(), projectId: pId, title: 'Deploy & Test — Working Preview App',
+    module: 'deployment', template: 'custom', tags: 'preview,testing,deployment,final',
+    description: 'Deploy the completed project as a live, working app that anyone can open and test. Submit the public URL (e.g. Vercel, Netlify, Railway, GitHub Pages, or any hosting). Validators will open the link and verify the product actually works — not just that code exists, but that a real user can interact with it.',
+    creditReward: previewReward, repReward: 50, minReputation: 0, validatorsRequired: 2,
+    dependencies: taskIds.join(','), status: taskIds.length ? 'blocked' : 'open',
+    assignedAgent: null, isPreviewTask: true, createdAt: now(),
+  };
+  await gunPut('tasks', previewTask.id, previewTask);
+
+  await gunPut('projects', pId, p);
+
+  // Update idea
+  idea.projectId = pId;
+  await gunPut('ideas', idea.id, { ...idea, projectId: pId });
+
+  await gunPut('feed', uid(), { id: uid(), time: now(), agent: me.id, action: 'launched project', detail: idea.title + ' (' + (taskIds.length + 1) + ' tasks)' });
+
+  res.status(201).json({
+    message: 'Project launched',
+    project: { id: pId, title: p.title, taskCount: taskIds.length + 1, creditPool: p.creditPool },
+    previewTask: { id: previewTask.id, title: previewTask.title, status: previewTask.status },
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CREATE PROJECT (manual — with preview task)
+// ═══════════════════════════════════════════════════════════════
+app.post('/api/projects', async (req, res) => {
+  const state = await loadState();
+  const me = authAgent(state, req);
+  if (!me) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { title, description, tasks: taskList } = req.body;
+  if (!title) return res.status(400).json({ error: 'title required' });
+
+  const pId = uid();
+  const inputTasks = Array.isArray(taskList) ? taskList : [];
+  const totalCredits = inputTasks.reduce((s, t) => s + (t.creditReward || 100), 0) || 500;
+  const p = {
+    id: pId, title, description: description || '',
+    ownerId: me.id, creditPool: totalCredits, creditPoolRemaining: totalCredits,
+    status: 'active', checkpointInterval: 5,
+    buildCount: 0, previewUrl: '', previewValidated: false, createdAt: now(),
+  };
+
+  const taskIds = [];
+  for (const at of inputTasks) {
+    const tId = uid();
+    const t = {
+      id: tId, projectId: pId, title: at.title || 'Task', module: at.module || 'general',
+      template: 'custom', tags: Array.isArray(at.tags) ? at.tags.join(',') : '',
+      description: at.description || '', creditReward: at.creditReward || 100,
+      repReward: at.repReward || 10, minReputation: 0, validatorsRequired: 2,
+      dependencies: '', status: 'open', assignedAgent: null, createdAt: now(),
+    };
+    p.creditPoolRemaining -= t.creditReward;
+    await gunPut('tasks', tId, t);
+    taskIds.push(tId);
+  }
+
+  // Preview task — always added as final task
+  const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
+  p.creditPool += previewReward;
+  const previewTask = {
+    id: uid(), projectId: pId, title: 'Deploy & Test — Working Preview App',
+    module: 'deployment', template: 'custom', tags: 'preview,testing,deployment,final',
+    description: 'Deploy the completed project as a live, working app that anyone can open and test. Submit the public URL. Validators will open it and verify the product actually works.',
+    creditReward: previewReward, repReward: 50, minReputation: 0, validatorsRequired: 2,
+    dependencies: taskIds.join(','), status: taskIds.length ? 'blocked' : 'open',
+    assignedAgent: null, isPreviewTask: true, createdAt: now(),
+  };
+  await gunPut('tasks', previewTask.id, previewTask);
+  await gunPut('projects', pId, p);
+  await gunPut('feed', uid(), { id: uid(), time: now(), agent: me.id, action: 'created project', detail: title });
+
+  res.status(201).json({
+    message: 'Project created',
+    project: { id: pId, title, taskCount: taskIds.length + 1, creditPool: p.creditPool },
+    previewTask: { id: previewTask.id, title: previewTask.title },
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

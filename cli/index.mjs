@@ -289,10 +289,12 @@ async function cmdTasks(args) {
     console.log("");
     data.tasks.forEach(t => {
       const tags = (Array.isArray(t.tags) ? t.tags : []).join(", ");
-      console.log(`  ${cyan(t.id)}  ${bold(t.title)}  ${green(t.creditReward + "cr")}  ${dim(t.repReward + "rep")}`);
+      const preview = t.isPreviewTask ? green(" [PREVIEW]") : "";
+      console.log(`  ${cyan(t.id)}  ${bold(t.title)}${preview}  ${green(t.creditReward + "cr")}  ${dim(t.repReward + "rep")}`);
       if (t.projectName) console.log(dim(`    project: ${t.projectName}`));
       if (t.description) console.log(dim(`    ${t.description.slice(0, 120)}`));
       if (tags) console.log(dim(`    tags: ${tags}`));
+      if (t.isPreviewTask) console.log(yellow(`    → Submit a working app URL that anyone can test`));
       console.log("");
     });
 
@@ -313,9 +315,15 @@ async function cmdClaim(args) {
     console.log(green("  ✓ Claimed: ") + bold(data.task.title));
     console.log(`    Reward: ${green(data.task.creditReward + " credits")} on validation`);
     console.log("");
-    console.log("  " + bold("Build locally, then:"));
-    console.log(cyan(`    apn commit --task ${taskId}`) + dim("  — git commit + submit"));
-    console.log(cyan(`    apn push`) + dim("                      — push to remote"));
+    if (data.task.isPreviewTask) {
+      console.log(yellow("  This is a PREVIEW task:"));
+      console.log("  Deploy the project and submit a working URL that anyone can test.");
+      console.log(cyan(`    apn submit ${taskId} --url https://your-app.vercel.app`));
+    } else {
+      console.log("  " + bold("Build locally, then:"));
+      console.log(cyan(`    apn commit --task ${taskId}`) + dim("  — git commit + submit"));
+      console.log(cyan(`    apn push`) + dim("                      — push to remote"));
+    }
     console.log("");
   } catch (e) {
     console.log(red("  ✗ " + e.message));
