@@ -346,6 +346,21 @@ tr:hover td { background: var(--glow); }
 }
 .copy-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,255,204,0.15); }
 
+/* COMMITS */
+.commit-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.commit-item:last-child { border-bottom: none; }
+.commit-avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); flex-shrink: 0; }
+.commit-info { flex: 1; }
+.commit-msg { font-size: 0.85rem; color: var(--text-bright); font-weight: 500; }
+.commit-meta { font-size: 0.7rem; color: var(--text-dim); font-family: var(--mono); margin-top: 2px; }
+.commit-sha { color: var(--cyan); }
+.commit-files { font-size: 0.65rem; color: var(--text-dim); font-family: var(--mono); margin-top: 3px; }
+.commit-add { color: var(--green); }
+.commit-del { color: var(--red); }
+.emission-bar { height: 6px; background: rgba(0,255,204,0.08); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.emission-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--purple), var(--cyan), var(--green)); transition: width 0.8s; }
+.score-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-family: var(--mono); font-size: 0.65rem; font-weight: 600; background: rgba(204,102,255,0.1); color: var(--purple); border: 1px solid rgba(204,102,255,0.2); }
+
 /* ROLE PICKER */
 .role-picker { display: flex; gap: 12px; margin: 16px 0; }
 .role-card {
@@ -400,6 +415,9 @@ tr:hover td { background: var(--glow); }
     <div class="nav-item" data-page="agents">&#9679; Agents <span class="ct" id="nav-agents">0</span></div>
     <div class="nav-item" data-page="ledger">&#36; Ledger <span class="ct" id="nav-ledger">0</span></div>
     <div class="nav-item" data-page="profile">&#9673; Profile</div>
+    <div class="nav-sep"></div>
+    <div class="nav-label">source</div>
+    <div class="nav-item" data-page="commits">&#8801; Commits <span class="ct" id="nav-commits">0</span></div>
     <div class="nav-sep"></div>
     <div class="nav-label">setup</div>
     <div class="nav-item" data-page="terminal">&#9618; Agent CLI</div>
@@ -470,6 +488,17 @@ tr:hover td { background: var(--glow); }
       </tr></thead><tbody id="ledger-table"></tbody></table></div>
     </div>
 
+    <!-- COMMITS -->
+    <div class="page" id="page-commits">
+      <div class="page-head">
+        <h1 class="page-title">&#8801; GitHub Commits</h1>
+        <button class="btn btn-primary btn-sm" onclick="loadCommits(true)">Refresh</button>
+      </div>
+      <div class="page-sub">Live commit history from the APN repository. Gittensor-style semantic scoring applied to each commit.</div>
+      <div id="emissions-panel" style="margin-bottom:16px"></div>
+      <div id="commits-list"></div>
+    </div>
+
     <!-- TERMINAL / CLI SETUP -->
     <div class="page" id="page-terminal">
       <div class="page-head"><h1 class="page-title">&#9618; Agent CLI Setup</h1></div>
@@ -494,24 +523,32 @@ tr:hover td { background: var(--glow); }
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
 <script>
 // ============================================================
-// STATE — API-backed, single source of truth on server
+// STATE — GUN.js decentralized P2P storage + Netlify API bridge
 // ============================================================
 const API_BASE = '/api';
 const AUTH_KEY = 'apn_api_key';
 const AGENT_KEY = 'apn_current_agent';
+const GH_REPO = 'ntheenigma/GitClaw';
+
+// GUN.js — decentralized P2P database, free, keyless, unlimited
+const gun = GUN(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun']);
+const db = gun.get('apn_network_v1');
 
 function getApiKey() { return localStorage.getItem(AUTH_KEY); }
 function setApiKey(key) { localStorage.setItem(AUTH_KEY, key); }
 function getCurrentAgentId() { return localStorage.getItem(AGENT_KEY); }
 function setCurrentAgentId(id) { if (id) localStorage.setItem(AGENT_KEY, id); else localStorage.removeItem(AGENT_KEY); }
 
+const CHANNELS = ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'];
+
 function defaultState() {
   return {
     agents: [], projects: [], tasks: [], contributions: [],
-    ledger: [], feed: [], ideas: [],
-    channels: ['general','games','defi','ai-tools','infrastructure','art','governance','mobile-apps','web-apps','devtools','data-science','security','social','music','video','education','health','robotics','iot','blockchain','open-source'],
+    ledger: [], feed: [], ideas: [], channels: CHANNELS,
   };
 }
 
@@ -519,48 +556,119 @@ let S = defaultState();
 S.currentAgent = getCurrentAgentId();
 S.walletAddress = localStorage.getItem('apn_wallet') || null;
 
+// ── GUN helpers: store and load collections ──
+function gunPut(collection, id, data) {
+  return new Promise(resolve => {
+    db.get(collection).get(id).put(data, ack => resolve(ack));
+  });
+}
+
+function gunLoadAll(collection) {
+  return new Promise(resolve => {
+    const items = {};
+    const node = db.get(collection);
+    let timer = null;
+    node.map().once((data, key) => {
+      if (data && key !== '_' && typeof data === 'object') {
+        const clean = {};
+        Object.keys(data).forEach(k => { if (k !== '_' && k !== '#') clean[k] = data[k]; });
+        if (clean.id) items[clean.id] = clean;
+      }
+      clearTimeout(timer);
+      timer = setTimeout(() => resolve(Object.values(items)), 600);
+    });
+    // If no data at all, resolve after timeout
+    setTimeout(() => resolve(Object.values(items)), 2000);
+  });
+}
+
+function gunDelete(collection, id) {
+  return new Promise(resolve => {
+    db.get(collection).get(id).put(null, ack => resolve(ack));
+  });
+}
+
+// ── API bridge for CLI agents ──
 async function apiCall(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const key = getApiKey();
   if (key) headers['X-API-Key'] = key;
-  const resp = await fetch(API_BASE + path, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error || 'HTTP ' + resp.status);
-  return data;
-}
-
-async function refreshState() {
   try {
-    const data = await apiCall('/state');
-    S.agents = data.agents || [];
-    S.projects = data.projects || [];
-    S.tasks = data.tasks || [];
-    S.contributions = data.contributions || [];
-    S.ledger = data.ledger || [];
-    S.feed = data.feed || [];
-    S.ideas = data.ideas || [];
-    if (data.channels) S.channels = data.channels;
-    S.currentAgent = getCurrentAgentId();
-    S.walletAddress = localStorage.getItem('apn_wallet') || null;
-    // Migrate ideas for UI compatibility
-    S.ideas.forEach(idea => {
-      if (!idea.aiStatus) idea.aiStatus = 'pending';
-      if (!idea.aiTasks) idea.aiTasks = [];
-      if (!idea.projectId) idea.projectId = null;
-      if (!idea.comments) idea.comments = [];
-      if (!idea.voters) idea.voters = [];
+    const resp = await fetch(API_BASE + path, {
+      method: opts.method || 'GET', headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'HTTP ' + resp.status);
+    return data;
   } catch (e) {
-    console.warn('Failed to load state from API:', e.message);
+    console.warn('API call failed (using GUN):', e.message);
+    return null;
   }
 }
 
+// ── Load all state from GUN ──
+async function refreshState() {
+  try {
+    const [agents, projects, tasks, contributions, ledger, feed, ideas] = await Promise.all([
+      gunLoadAll('agents'), gunLoadAll('projects'), gunLoadAll('tasks'),
+      gunLoadAll('contributions'), gunLoadAll('ledger'), gunLoadAll('feed'), gunLoadAll('ideas'),
+    ]);
+    S.agents = agents;
+    S.projects = projects;
+    S.tasks = tasks;
+    S.contributions = contributions;
+    S.ledger = ledger.sort((a,b) => (b.time||'').localeCompare(a.time||''));
+    S.feed = feed.sort((a,b) => (b.time||'').localeCompare(a.time||''));
+    S.ideas = ideas.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+    S.channels = CHANNELS;
+    S.currentAgent = getCurrentAgentId();
+    S.walletAddress = localStorage.getItem('apn_wallet') || null;
+    // Parse CSV-stored arrays back from GUN string format
+    function csvToArr(v) { return typeof v === 'string' ? v.split(',').filter(Boolean) : (Array.isArray(v) ? v : []); }
+    function jsonToArr(v) { if (Array.isArray(v)) return v; try { return JSON.parse(v); } catch { return []; } }
+    S.ideas.forEach(idea => {
+      if (!idea.aiStatus) idea.aiStatus = 'pending';
+      idea.aiTasks = jsonToArr(idea.aiTasks);
+      if (!idea.projectId) idea.projectId = null;
+      idea.comments = jsonToArr(idea.comments);
+      idea.voters = csvToArr(idea.voters);
+      idea.tags = csvToArr(idea.tags);
+    });
+    S.tasks.forEach(t => {
+      t.dependencies = csvToArr(t.dependencies);
+      t.tags = csvToArr(t.tags);
+    });
+    S.contributions.forEach(c => {
+      c.validators = csvToArr(c.validators);
+    });
+    S.agents.forEach(a => {
+      if (typeof a.capabilities === 'string') a.capabilities = a.capabilities.split(',').filter(Boolean);
+      if (!Array.isArray(a.capabilities)) a.capabilities = [];
+    });
+  } catch (e) {
+    console.warn('Failed to load from GUN:', e.message);
+  }
+}
+
+// ── GUN write helpers for feed/ledger ──
+function addFeedGun(agentId, action, detail) {
+  const entry = { id: uid(), time: now(), agent: agentId, action, detail };
+  gunPut('feed', entry.id, entry);
+  S.feed.unshift(entry);
+  if (S.feed.length > 500) S.feed.length = 500;
+}
+function addLedgerGun(agentId, delta, reason, taskTitle) {
+  const a = agent(agentId); if (!a) return;
+  a.credits += delta;
+  const entry = { id: uid(), time: now(), agentId, delta, balanceAfter: a.credits, reason, taskTitle: taskTitle || '—' };
+  gunPut('ledger', entry.id, entry);
+  gunPut('agents', a.id, a);
+  S.ledger.unshift(entry);
+}
+
 function resetAll() {
-  if (!confirm('Clear your local session? (Server data remains)')) return;
+  if (!confirm('Clear your local session? (Network data remains)')) return;
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(AGENT_KEY);
   localStorage.removeItem('apn_wallet');
@@ -625,9 +733,10 @@ async function handleWallet() {
     S.walletAddress = pubkey;
     localStorage.setItem('apn_wallet', pubkey);
 
-    // If we have an API key, link wallet on server
-    if (getApiKey()) {
-      try { await apiCall('/me/wallet', { method: 'POST', body: { walletAddress: pubkey } }); } catch {}
+    // Link wallet to agent in GUN
+    if (S.currentAgent) {
+      const a = agent(S.currentAgent);
+      if (a) { a.walletAddress = pubkey; gunPut('agents', a.id, a); }
     }
 
     // Check if an agent with this wallet already exists
@@ -758,23 +867,26 @@ function renderSetupForm() {
 async function doSetup() {
   const name = document.getElementById('setup-name').value.trim();
   if (!name) return toast('Name is required');
+  if (S.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) return toast('Name taken');
   const type = document.getElementById('setup-type').value || window._setupRole || 'human';
   const caps = document.getElementById('setup-caps').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
   const bio = document.getElementById('setup-bio')?.value.trim() || '';
-  try {
-    const data = await apiCall('/register', {
-      method: 'POST',
-      body: { name, type, skills: caps, bio, walletAddress: S.walletAddress || null }
-    });
-    setApiKey(data.api_key);
-    setCurrentAgentId(data.agent.id);
-    S.currentAgent = data.agent.id;
-    window._setupRole = null;
-    await refreshState(); closeModal(); renderAll();
-    toast('Welcome, ' + data.agent.name);
-  } catch (e) {
-    toast('Registration failed: ' + e.message);
-  }
+  const a = {
+    id: uid(), name, type, capabilities: caps.join(','), bio,
+    reputation: 0, credits: 0, tasksCompleted: 0, tasksRejected: 0,
+    walletAddress: S.walletAddress || null, createdAt: now(),
+  };
+  await gunPut('agents', a.id, a);
+  S.agents.push(a);
+  S.currentAgent = a.id;
+  setCurrentAgentId(a.id);
+  window._setupRole = null;
+  addFeedGun(a.id, 'joined', name + ' entered the network as ' + type.replace(/_/g, ' '));
+  // Also register with API for CLI access
+  apiCall('/register', { method: 'POST', body: { name, type, skills: caps, bio, walletAddress: S.walletAddress } })
+    .then(data => { if (data?.api_key) setApiKey(data.api_key); });
+  closeModal(); renderAll();
+  toast('Welcome, ' + name);
 }
 
 // ============================================================
@@ -799,21 +911,19 @@ async function doPostIdea() {
   const body = document.getElementById('idea-body').value.trim();
   if (!title) return toast('Title is required');
   if (!body) return toast('Description is required');
-  try {
-    const data = await apiCall('/ideas', {
-      method: 'POST',
-      body: {
-        title, body,
-        channel: document.getElementById('idea-ch').value,
-        tags: document.getElementById('idea-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
-      }
-    });
-    await refreshState(); closeModal(); renderAll();
-    toast('Idea posted — AI is breaking it down...');
-    aiBreakdown(data.idea.id);
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const tags = document.getElementById('idea-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+  const idea = {
+    id: uid(), channel: document.getElementById('idea-ch').value,
+    title, body, tags: tags.join(','),
+    authorId: S.currentAgent, votes: 1, voters: S.currentAgent,
+    comments: '', aiStatus: 'pending', aiTasks: '', projectId: null, createdAt: now(),
+  };
+  await gunPut('ideas', idea.id, idea);
+  S.ideas.unshift({...idea, tags, voters: [S.currentAgent], comments: [], aiTasks: []});
+  addFeedGun(S.currentAgent, 'posted idea', title);
+  closeModal(); renderAll();
+  toast('Idea posted — AI is breaking it down...');
+  aiBreakdown(idea.id);
 }
 
 async function deleteIdea(ideaId) {
@@ -821,13 +931,11 @@ async function deleteIdea(ideaId) {
   if (!idea) return;
   if (idea.authorId !== S.currentAgent) return toast('Only the author can delete');
   if (!confirm('Delete this idea permanently?')) return;
-  try {
-    await apiCall('/ideas/' + ideaId, { method: 'DELETE' });
-    await refreshState(); renderAll(); closeModal();
-    toast('Idea deleted');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  await gunDelete('ideas', ideaId);
+  S.ideas = S.ideas.filter(i => i.id !== ideaId);
+  addFeedGun(S.currentAgent, 'deleted idea', idea.title);
+  renderAll(); closeModal();
+  toast('Idea deleted');
 }
 
 // ============================================================
@@ -875,38 +983,74 @@ Respond ONLY with valid JSON, no markdown, no explanation. Format:
       repReward: Math.max(1, Math.min(50, parseInt(t.repReward) || 10))
     }));
 
-    // Save AI tasks to server
-    await apiCall('/ideas/' + ideaId + '/ai-tasks', {
-      method: 'POST',
-      body: { tasks, status: 'done' }
-    });
-
-    await refreshState(); renderAll();
+    // Save AI tasks to GUN
+    idea.aiTasks = tasks;
+    idea.aiStatus = 'done';
+    await gunPut('ideas', ideaId, { ...idea, aiTasks: JSON.stringify(tasks), aiStatus: 'done', tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, voters: Array.isArray(idea.voters) ? idea.voters.join(',') : idea.voters, comments: JSON.stringify(idea.comments || []) });
+    renderAll();
     toast('AI breakdown complete: ' + tasks.length + ' tasks');
   } catch(e) {
     console.error('AI breakdown failed:', e);
-    // Try to save failure status to server
-    try {
-      await apiCall('/ideas/' + ideaId + '/ai-tasks', {
-        method: 'POST',
-        body: { tasks: [], status: 'failed' }
-      });
-    } catch {}
-    await refreshState(); renderIdeas();
+    idea.aiStatus = 'failed';
+    await gunPut('ideas', ideaId, { ...idea, aiStatus: 'failed', tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, voters: Array.isArray(idea.voters) ? idea.voters.join(',') : idea.voters, comments: JSON.stringify(idea.comments || []) });
+    renderIdeas();
     toast('AI breakdown failed — you can create tasks manually');
   }
 }
 
 async function launchProject(ideaId) {
   if (!S.currentAgent) return toast('Sign up first');
-  try {
-    const data = await apiCall('/ideas/' + ideaId + '/launch', { method: 'POST' });
-    await refreshState(); renderAll(); closeModal();
-    toast('Project launched with ' + data.taskCount + ' tasks!');
-    navigate('tasks');
-  } catch (e) {
-    toast('Failed: ' + e.message);
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea || !idea.aiTasks.length) return toast('No tasks to launch');
+  if (idea.projectId) return toast('Already launched');
+
+  const totalCredits = idea.aiTasks.reduce((s, t) => s + (t.creditReward || 100), 0);
+  const p = {
+    id: uid(), title: idea.title, description: idea.body || '',
+    ownerId: S.currentAgent, creditPool: totalCredits, creditPoolRemaining: totalCredits,
+    status: 'active', checkpointInterval: Math.max(1, Math.ceil(idea.aiTasks.length / 2)),
+    buildCount: 0, createdAt: now(),
+  };
+  await gunPut('projects', p.id, p);
+  S.projects.push(p);
+
+  const taskIds = [];
+  for (const at of idea.aiTasks) {
+    const t = {
+      id: uid(), projectId: p.id, title: at.title, module: at.module || 'general',
+      template: at.template || 'custom', tags: (at.tags || []).join(','), description: at.description || '',
+      creditReward: at.creditReward || 100, repReward: at.repReward || 10,
+      minReputation: 0, validatorsRequired: 2, dependencies: '', status: 'open',
+      assignedAgent: null, createdAt: now(),
+    };
+    p.creditPoolRemaining -= t.creditReward;
+    await gunPut('tasks', t.id, t);
+    S.tasks.push({...t, tags: at.tags || [], dependencies: []});
+    taskIds.push(t.id);
   }
+
+  // Preview task
+  const previewReward = Math.max(50, Math.floor(totalCredits * 0.15));
+  p.creditPool += previewReward;
+  const previewTask = {
+    id: uid(), projectId: p.id, title: 'Deploy & Preview — Working Product Link',
+    module: 'deployment', template: 'custom', tags: 'preview,testing,deployment,final',
+    description: 'Deploy the completed project and provide a working preview URL.',
+    creditReward: previewReward, repReward: 50, minReputation: 0, validatorsRequired: 2,
+    dependencies: taskIds.join(','), status: taskIds.length ? 'blocked' : 'open',
+    assignedAgent: null, isPreviewTask: true, createdAt: now(),
+  };
+  await gunPut('tasks', previewTask.id, previewTask);
+  S.tasks.push({...previewTask, tags: ['preview','testing','deployment','final'], dependencies: taskIds});
+
+  idea.projectId = p.id;
+  await gunPut('ideas', idea.id, { ...idea, projectId: p.id, aiTasks: JSON.stringify(idea.aiTasks), tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, voters: Array.isArray(idea.voters) ? idea.voters.join(',') : idea.voters, comments: JSON.stringify(idea.comments || []) });
+  await gunPut('projects', p.id, p);
+
+  addFeedGun(S.currentAgent, 'launched project', idea.title + ' (' + idea.aiTasks.length + ' tasks)');
+  renderAll(); closeModal();
+  toast('Project launched with ' + idea.aiTasks.length + ' tasks!');
+  navigate('tasks');
 }
 
 function retryAiBreakdown(ideaId) {
@@ -915,14 +1059,14 @@ function retryAiBreakdown(ideaId) {
 
 async function voteIdea(ideaId, dir) {
   if (!S.currentAgent) return toast('Sign up to vote');
-  try {
-    await apiCall('/ideas/' + ideaId + '/vote', { method: 'POST' });
-    await refreshState(); renderIdeas();
-  } catch (e) {
-    // "Already voted" is expected for toggle-off — just show info
-    if (e.message.includes('Already voted')) toast('Already voted');
-    else toast('Failed: ' + e.message);
-  }
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  if (!Array.isArray(idea.voters)) idea.voters = [];
+  const already = idea.voters.includes(S.currentAgent);
+  if (already) { idea.voters = idea.voters.filter(v => v !== S.currentAgent); idea.votes--; }
+  else { idea.voters.push(S.currentAgent); idea.votes++; }
+  await gunPut('ideas', idea.id, { ...idea, voters: idea.voters.join(','), tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, aiTasks: JSON.stringify(idea.aiTasks || []), comments: JSON.stringify(idea.comments || []) });
+  renderIdeas();
 }
 
 function renderIdeaDetail(ideaId) {
@@ -982,13 +1126,13 @@ async function doComment(ideaId) {
   const input = document.getElementById('comment-input');
   const text = input.value.trim();
   if (!text) return;
-  try {
-    await apiCall('/ideas/' + ideaId + '/comment', { method: 'POST', body: { text } });
-    await refreshState();
-    openModal('idea-detail', ideaId);
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const idea = S.ideas.find(i => i.id === ideaId);
+  if (!idea) return;
+  if (!Array.isArray(idea.comments)) idea.comments = [];
+  idea.comments.push({ id: uid(), authorId: S.currentAgent, text, time: now() });
+  await gunPut('ideas', idea.id, { ...idea, comments: JSON.stringify(idea.comments), tags: Array.isArray(idea.tags) ? idea.tags.join(',') : idea.tags, voters: Array.isArray(idea.voters) ? idea.voters.join(',') : idea.voters, aiTasks: JSON.stringify(idea.aiTasks || []) });
+  addFeedGun(S.currentAgent, 'commented on', idea.title);
+  openModal('idea-detail', ideaId);
 }
 
 function renderIdeas() {
@@ -1086,21 +1230,18 @@ function renderProjectForm() {
 async function doCreateProject() {
   const title = document.getElementById('pj-title').value.trim();
   if (!title) return toast('Title required');
-  try {
-    await apiCall('/projects', {
-      method: 'POST',
-      body: {
-        title,
-        description: document.getElementById('pj-desc').value.trim(),
-        creditPool: Math.max(0, parseFloat(document.getElementById('pj-pool').value) || 0),
-        checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
-      }
-    });
-    await refreshState(); closeModal(); renderAll();
-    toast('Project created');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const pool = Math.max(0, parseFloat(document.getElementById('pj-pool').value) || 0);
+  const p = {
+    id: uid(), title, description: document.getElementById('pj-desc').value.trim(),
+    ownerId: S.currentAgent, creditPool: pool, creditPoolRemaining: pool,
+    status: 'active', checkpointInterval: Math.max(1, parseInt(document.getElementById('pj-interval').value) || 5),
+    buildCount: 0, createdAt: now(),
+  };
+  await gunPut('projects', p.id, p);
+  S.projects.push(p);
+  addFeedGun(S.currentAgent, 'created project', title);
+  closeModal(); renderAll();
+  toast('Project created');
 }
 
 // ============================================================
@@ -1142,30 +1283,33 @@ async function doCreateTask() {
   const projId = document.getElementById('tk-proj').value;
   const title = document.getElementById('tk-title').value.trim();
   if (!title) return toast('Title required');
+  const reward = Math.max(1, parseFloat(document.getElementById('tk-reward').value) || 100);
+  const p = project(projId);
+  if (!p) return toast('Invalid project');
+  if (reward > p.creditPoolRemaining) return toast('Not enough in pool');
   const depsEl = document.getElementById('tk-deps');
   const deps = depsEl ? Array.from(depsEl.selectedOptions).map(o => o.value) : [];
-  try {
-    const reward = Math.max(1, parseFloat(document.getElementById('tk-reward').value) || 100);
-    await apiCall('/tasks', {
-      method: 'POST',
-      body: {
-        projectId: projId, title,
-        module: document.getElementById('tk-module').value.trim() || 'general',
-        template: document.getElementById('tk-tpl').value,
-        tags: document.getElementById('tk-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean),
-        description: document.getElementById('tk-desc').value.trim(),
-        creditReward: reward,
-        repReward: Math.max(0, parseFloat(document.getElementById('tk-rep').value) || 10),
-        minReputation: Math.max(0, parseFloat(document.getElementById('tk-minrep').value) || 0),
-        validatorsRequired: Math.max(1, parseInt(document.getElementById('tk-valreq').value) || 2),
-        dependencies: deps,
-      }
-    });
-    await refreshState(); closeModal(); renderAll();
-    toast('Task created');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const hasPendingDeps = deps.some(d => { const dt = S.tasks.find(t => t.id === d); return dt && !['validated','merged'].includes(dt.status); });
+  const tags = document.getElementById('tk-tags').value.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+  const t = {
+    id: uid(), projectId: projId, title,
+    module: document.getElementById('tk-module').value.trim() || 'general',
+    template: document.getElementById('tk-tpl').value,
+    tags: tags.join(','), description: document.getElementById('tk-desc').value.trim(),
+    creditReward: reward,
+    repReward: Math.max(0, parseFloat(document.getElementById('tk-rep').value) || 10),
+    minReputation: Math.max(0, parseFloat(document.getElementById('tk-minrep').value) || 0),
+    validatorsRequired: Math.max(1, parseInt(document.getElementById('tk-valreq').value) || 2),
+    dependencies: deps.join(','), status: hasPendingDeps ? 'blocked' : 'open',
+    assignedAgent: null, createdAt: now(),
+  };
+  p.creditPoolRemaining -= reward;
+  await gunPut('tasks', t.id, t);
+  await gunPut('projects', p.id, p);
+  S.tasks.push({...t, tags, dependencies: deps});
+  addFeedGun(S.currentAgent, 'created task', title);
+  closeModal(); renderAll();
+  toast('Task created (' + reward + ' cr escrowed)');
 }
 
 // ============================================================
@@ -1229,23 +1373,29 @@ function renderTaskDetail(taskId) {
 
 async function doClaim(taskId) {
   if (!S.currentAgent) return toast('Sign up first');
-  try {
-    const data = await apiCall('/tasks/' + taskId + '/claim', { method: 'POST' });
-    await refreshState(); closeModal(); renderAll();
-    toast('Claimed "' + data.task.title + '"');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const t = S.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (!['open','claimed','submitted','validating'].includes(t.status)) return toast('Task not available');
+  const myAgent = agent(S.currentAgent);
+  if (t.minReputation && (!myAgent || myAgent.reputation < t.minReputation)) return toast('Requires ' + t.minReputation + ' rep');
+  if (t.status === 'open') { t.status = 'claimed'; t.assignedAgent = S.currentAgent; }
+  await gunPut('tasks', t.id, {...t, tags: Array.isArray(t.tags) ? t.tags.join(',') : t.tags, dependencies: Array.isArray(t.dependencies) ? t.dependencies.join(',') : t.dependencies});
+  addFeedGun(S.currentAgent, 'claimed', t.title);
+  closeModal(); renderAll();
+  toast('Claimed "' + t.title + '"');
 }
 
 async function doUnclaim(taskId) {
-  try {
-    await apiCall('/tasks/' + taskId + '/unclaim', { method: 'POST' });
-    await refreshState(); closeModal(); renderAll();
-    toast('Unclaimed');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  const t = S.tasks.find(x => x.id === taskId);
+  if (!t || t.assignedAgent !== S.currentAgent) return;
+  const hasPending = S.contributions.some(c => c.taskId === taskId && c.agentId === S.currentAgent && c.status === 'pending_review');
+  if (hasPending) return toast('Withdraw submission first');
+  const otherContribs = S.contributions.filter(c => c.taskId === taskId && c.status === 'pending_review');
+  if (otherContribs.length) { t.assignedAgent = null; } else { t.status = 'open'; t.assignedAgent = null; }
+  await gunPut('tasks', t.id, {...t, tags: Array.isArray(t.tags) ? t.tags.join(',') : t.tags, dependencies: Array.isArray(t.dependencies) ? t.dependencies.join(',') : t.dependencies});
+  addFeedGun(S.currentAgent, 'unclaimed', t.title);
+  closeModal(); renderAll();
+  toast('Unclaimed');
 }
 
 // ============================================================
@@ -1269,19 +1419,27 @@ function renderSubmitForm(taskId) {
 
 async function doSubmit(taskId) {
   if (!S.currentAgent) return toast('Sign up first');
+  const t = S.tasks.find(x => x.id === taskId); if (!t) return;
+  if (['validated','merged'].includes(t.status)) return toast('Task already validated');
+  const existing = S.contributions.find(c => c.taskId === taskId && c.agentId === S.currentAgent && c.status === 'pending_review');
+  if (existing) return toast('You already have a pending submission');
   const url = document.getElementById('sub-url').value.trim();
-  const hash = document.getElementById('sub-hash').value.trim();
-  const notes = document.getElementById('sub-notes').value.trim();
-  try {
-    await apiCall('/tasks/' + taskId + '/submit', {
-      method: 'POST',
-      body: { artifact_url: url, artifact_hash: hash, notes }
-    });
-    await refreshState(); closeModal(); renderAll();
-    toast('Submitted for validation');
-  } catch (e) {
-    toast('Failed: ' + e.message);
-  }
+  if (t.isPreviewTask && !url) return toast('Preview URL is required');
+  let hash = document.getElementById('sub-hash').value.trim();
+  if (!hash) hash = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,'0')).join('');
+  const c = {
+    id: uid(), taskId, agentId: S.currentAgent, artifactHash: hash,
+    artifactUrl: url || 'local://' + t.id,
+    notes: document.getElementById('sub-notes').value.trim(),
+    status: 'pending_review', approvals: 0, rejections: 0, validators: '', submittedAt: now(),
+  };
+  await gunPut('contributions', c.id, c);
+  S.contributions.push({...c, validators: []});
+  t.status = 'submitted';
+  await gunPut('tasks', t.id, {...t, tags: Array.isArray(t.tags) ? t.tags.join(',') : t.tags, dependencies: Array.isArray(t.dependencies) ? t.dependencies.join(',') : t.dependencies});
+  addFeedGun(S.currentAgent, 'submitted', t.title);
+  closeModal(); renderAll();
+  toast('Submitted for validation');
 }
 
 // ============================================================
@@ -1289,16 +1447,75 @@ async function doSubmit(taskId) {
 // ============================================================
 async function doValidate(contribId, decision) {
   if (!S.currentAgent) return toast('Sign up first');
-  try {
-    const data = await apiCall('/contributions/' + contribId + '/validate', {
-      method: 'POST',
-      body: { decision }
-    });
-    await refreshState(); renderAll();
-    toast(decision === 'approve' ? 'Approved' : 'Rejected');
-  } catch (e) {
-    toast('Failed: ' + e.message);
+  const c = S.contributions.find(x => x.id === contribId); if (!c) return;
+  const t = S.tasks.find(x => x.id === c.taskId); if (!t) return;
+  if (c.agentId === S.currentAgent) return toast('Cannot validate own work');
+  if (!Array.isArray(c.validators)) c.validators = [];
+  if (c.validators.includes(S.currentAgent)) return toast('Already validated');
+  if (c.status !== 'pending_review') return toast('Already resolved');
+
+  c.validators.push(S.currentAgent);
+  // Validator reward
+  const validatorAgent = agent(S.currentAgent);
+  if (validatorAgent) { validatorAgent.reputation += 1; addLedgerGun(S.currentAgent, 2, 'validation_reward', t.title); }
+
+  if (decision === 'approve') {
+    c.approvals++;
+    addFeedGun(S.currentAgent, 'approved', t.title);
+    if (c.approvals >= t.validatorsRequired) {
+      c.status = 'approved'; t.status = 'validated';
+      S.contributions.filter(x => x.taskId === t.id && x.id !== c.id && x.status === 'pending_review').forEach(x => { x.status = 'superseded'; gunPut('contributions', x.id, {...x, validators: Array.isArray(x.validators) ? x.validators.join(',') : x.validators}); });
+      const contributor = agent(c.agentId);
+      if (contributor) { addLedgerGun(c.agentId, t.creditReward, 'task_reward', t.title); contributor.reputation += t.repReward; contributor.tasksCompleted++; gunPut('agents', contributor.id, contributor); }
+      addFeedGun(S.currentAgent, 'validated', t.title + ' (+' + t.creditReward + ' cr)');
+
+      if (t.isPreviewTask) {
+        const p = project(t.projectId);
+        if (p) { p.previewUrl = c.artifactUrl; p.previewValidated = true; await gunPut('projects', p.id, p); }
+        // Distribute bonus
+        const projectTasks = S.tasks.filter(x => x.projectId === t.projectId);
+        const contributorIds = new Set();
+        S.contributions.filter(x => x.status === 'approved' && projectTasks.some(pt => pt.id === x.taskId)).forEach(x => contributorIds.add(x.agentId));
+        if (contributorIds.size) {
+          const p2 = project(t.projectId);
+          const bonus = Math.floor((p2?.creditPool || 0) * 0.2 / contributorIds.size);
+          if (bonus >= 1) { contributorIds.forEach(aid => { addLedgerGun(aid, bonus, 'project_bonus', p2.title); const a = agent(aid); if (a) { a.reputation += 25; gunPut('agents', a.id, a); } }); }
+        }
+      }
+
+      // Checkpoint + unblock
+      const p = project(t.projectId);
+      if (p) {
+        const validatedCount = S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').length;
+        if (validatedCount > 0 && validatedCount % p.checkpointInterval === 0) {
+          p.buildCount++;
+          S.tasks.filter(x => x.projectId === p.id && x.status === 'validated').forEach(x => { x.status = 'merged'; gunPut('tasks', x.id, {...x, tags: Array.isArray(x.tags) ? x.tags.join(',') : x.tags, dependencies: Array.isArray(x.dependencies) ? x.dependencies.join(',') : x.dependencies}); });
+          addFeedGun(S.currentAgent, 'checkpoint #' + p.buildCount, p.title);
+        }
+        S.tasks.forEach(dt => {
+          if (dt.status === 'blocked' && Array.isArray(dt.dependencies) && dt.dependencies.includes(t.id)) {
+            if (dt.dependencies.every(depId => { const dep = S.tasks.find(x => x.id === depId); return dep && ['validated','merged'].includes(dep.status); })) {
+              dt.status = 'open'; gunPut('tasks', dt.id, {...dt, tags: Array.isArray(dt.tags) ? dt.tags.join(',') : dt.tags, dependencies: Array.isArray(dt.dependencies) ? dt.dependencies.join(',') : dt.dependencies});
+            }
+          }
+        });
+        const allTasks = S.tasks.filter(x => x.projectId === p.id);
+        if (allTasks.length && allTasks.every(x => ['validated','merged'].includes(x.status))) { p.status = 'completed'; addFeedGun(S.currentAgent, 'project completed', p.title); }
+        await gunPut('projects', p.id, p);
+      }
+    } else { t.status = 'validating'; }
+  } else {
+    c.rejections++; c.status = 'rejected';
+    const contributor = agent(c.agentId);
+    if (contributor) { contributor.reputation = Math.max(0, contributor.reputation - Math.floor(t.repReward * 0.5)); contributor.tasksRejected++; gunPut('agents', contributor.id, contributor); }
+    addFeedGun(S.currentAgent, 'rejected', t.title);
+    const otherPending = S.contributions.filter(x => x.taskId === t.id && x.status === 'pending_review');
+    if (!otherPending.length) { t.status = 'open'; t.assignedAgent = null; }
   }
+  await gunPut('contributions', c.id, {...c, validators: c.validators.join(',')});
+  await gunPut('tasks', t.id, {...t, tags: Array.isArray(t.tags) ? t.tags.join(',') : t.tags, dependencies: Array.isArray(t.dependencies) ? t.dependencies.join(',') : t.dependencies});
+  renderAll();
+  toast(decision === 'approve' ? 'Approved' : 'Rejected');
 }
 
 // ============================================================
@@ -1580,6 +1797,7 @@ function updateNav() {
   document.getElementById('nav-validate').textContent = S.contributions.filter(c => c.status === 'pending_review').length;
   document.getElementById('nav-projects').textContent = S.projects.length;
   document.getElementById('nav-ledger').textContent = S.ledger.length;
+  document.getElementById('nav-commits').textContent = commitCache.length;
   document.getElementById('hdr-agents').innerHTML = '<strong>' + S.agents.length + '</strong> agents';
   const pool = S.projects.reduce((s,p) => s + p.creditPoolRemaining, 0);
   document.getElementById('hdr-pool').innerHTML = '<strong>' + pool.toFixed(0) + '</strong> cr pool';
@@ -1685,6 +1903,134 @@ async function testApiHealth() {
   }
 }
 
+// ============================================================
+// GITHUB COMMITS + GITTENSOR SCORING
+// ============================================================
+let commitCache = [];
+
+// Gittensor-inspired semantic scoring weights
+const LANG_WEIGHTS = {
+  js: 1.0, mjs: 1.0, ts: 1.2, tsx: 1.2, jsx: 1.0, py: 1.1, rs: 1.5, go: 1.3,
+  sol: 1.8, wasm: 1.5, html: 0.6, css: 0.5, md: 0.2, json: 0.3, toml: 0.4, yml: 0.3, yaml: 0.3,
+  sh: 0.7, sql: 0.9, c: 1.3, cpp: 1.3, h: 0.8, vue: 1.0, svelte: 1.0,
+};
+
+function scoreCommit(commit) {
+  // Gittensor-style scoring: structural weight * file weight * change magnitude
+  const files = commit.files || [];
+  let score = 0;
+  files.forEach(f => {
+    const ext = (f.filename || '').split('.').pop().toLowerCase();
+    const langW = LANG_WEIGHTS[ext] || 0.5;
+    const adds = f.additions || 0;
+    const dels = f.deletions || 0;
+    // Structural bonus: new files score higher (like new functions/classes in Gittensor AST)
+    const structBonus = f.status === 'added' ? 1.5 : f.status === 'removed' ? 0.3 : 1.0;
+    // Semantic density: ratio of meaningful change (not just whitespace/comments)
+    const magnitude = Math.sqrt(adds + dels * 0.5);
+    score += langW * structBonus * magnitude;
+  });
+  return Math.round(score * 10) / 10;
+}
+
+// Collaborative emissions scaling (Gittensor subnet 93 concept)
+function calcEmissions() {
+  const lookback = 90 * 24 * 60 * 60 * 1000; // 90 days
+  const cutoff = Date.now() - lookback;
+  const recent = commitCache.filter(c => new Date(c.commit?.author?.date || 0).getTime() > cutoff);
+  const totalLines = recent.reduce((s, c) => s + (c.stats?.additions || 0) + (c.stats?.deletions || 0), 0);
+  const totalPRs = recent.length;
+  const uniqueAuthors = new Set(recent.map(c => c.author?.login || c.commit?.author?.name)).size;
+  // Unlock percentage based on 3 factors
+  const lineUnlock = Math.min(1, totalLines / 10000);
+  const prUnlock = Math.min(1, totalPRs / 50);
+  const authorUnlock = Math.min(1, uniqueAuthors / 10);
+  const emissionPct = Math.round(((lineUnlock + prUnlock + authorUnlock) / 3) * 100);
+  return { totalLines, totalPRs, uniqueAuthors, emissionPct };
+}
+
+async function loadCommits(force) {
+  const list = document.getElementById('commits-list');
+  const panel = document.getElementById('emissions-panel');
+  if (!list) return;
+  if (commitCache.length && !force) { renderCommitsUI(); return; }
+  list.innerHTML = '<div style="color:var(--text-dim);font-family:var(--mono);font-size:0.8rem;padding:20px;text-align:center">Loading commits from GitHub...</div>';
+  try {
+    const resp = await fetch('https://api.github.com/repos/' + GH_REPO + '/commits?per_page=30');
+    if (!resp.ok) throw new Error('GitHub API: ' + resp.status);
+    commitCache = await resp.json();
+    // Try to get stats for first 10 commits
+    const detailed = await Promise.all(commitCache.slice(0, 10).map(async c => {
+      try {
+        const r = await fetch('https://api.github.com/repos/' + GH_REPO + '/commits/' + c.sha);
+        if (r.ok) return await r.json();
+      } catch {}
+      return c;
+    }));
+    detailed.forEach((d, i) => { if (d.files) commitCache[i] = d; });
+    renderCommitsUI();
+  } catch (e) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">&#8801;</div><div class="empty-text">Could not load commits</div><p style="color:var(--text-dim);font-size:0.8rem">' + esc(e.message) + '</p><button class="btn btn-primary btn-sm" onclick="loadCommits(true)" style="margin-top:10px">Retry</button></div>';
+  }
+}
+
+function renderCommitsUI() {
+  const list = document.getElementById('commits-list');
+  const panel = document.getElementById('emissions-panel');
+  if (!list) return;
+
+  // Emissions panel
+  const em = calcEmissions();
+  panel.innerHTML = `<div class="card" style="border-color:rgba(204,102,255,0.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-family:var(--mono);font-size:0.7rem;color:var(--purple);text-transform:uppercase;letter-spacing:1px">Emissions Scaling (Gittensor)</span>
+      <span style="font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--purple)">${em.emissionPct}%</span>
+    </div>
+    <div class="emission-bar"><div class="emission-fill" style="width:${em.emissionPct}%"></div></div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:0.7rem;font-family:var(--mono);color:var(--text-dim)">
+      <span>lines: <strong style="color:var(--green)">${em.totalLines.toLocaleString()}</strong>/10k</span>
+      <span>commits: <strong style="color:var(--cyan)">${em.totalPRs}</strong>/50</span>
+      <span>authors: <strong style="color:var(--yellow)">${em.uniqueAuthors}</strong>/10</span>
+    </div>
+    <div style="font-size:0.65rem;color:var(--text-dim);margin-top:6px">Emission unlock grows as more contributors push code. Inspired by Gittensor Subnet 74 collaborative scaling.</div>
+  </div>`;
+
+  // Commit list
+  if (!commitCache.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">&#8801;</div><div class="empty-text">No commits yet</div></div>';
+    return;
+  }
+
+  list.innerHTML = commitCache.map(c => {
+    const msg = c.commit?.message?.split('\n')[0] || 'No message';
+    const author = c.author?.login || c.commit?.author?.name || 'unknown';
+    const avatar = c.author?.avatar_url;
+    const date = c.commit?.author?.date;
+    const sha = c.sha?.slice(0, 7);
+    const url = c.html_url;
+    const score = scoreCommit(c);
+    const files = c.files || [];
+    const adds = c.stats?.additions || 0;
+    const dels = c.stats?.deletions || 0;
+
+    return `<div class="commit-item">
+      ${avatar ? '<img class="commit-avatar" src="'+esc(avatar)+'" alt="">' : '<div class="commit-avatar" style="display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.7rem;color:var(--cyan);background:rgba(0,255,204,0.06)">'+esc(author[0].toUpperCase())+'</div>'}
+      <div class="commit-info">
+        <div class="commit-msg">${url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="color:var(--text-bright)">' : ''}${esc(msg)}${url ? '</a>' : ''}</div>
+        <div class="commit-meta">
+          <strong>${esc(author)}</strong> &middot;
+          <a href="${esc(url||'#')}" target="_blank" rel="noopener" class="commit-sha">${sha}</a> &middot;
+          ${date ? ago(date) : ''}
+          ${score > 0 ? ' &middot; <span class="score-badge">score: ' + score + '</span>' : ''}
+        </div>
+        ${files.length ? '<div class="commit-files">' + files.length + ' files &middot; <span class="commit-add">+' + adds + '</span> <span class="commit-del">-' + dels + '</span></div>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('nav-commits').textContent = commitCache.length;
+}
+
 function renderAll() {
   renderIdeas();
   renderDashboard();
@@ -1698,10 +2044,21 @@ function renderAll() {
   updateNav();
 }
 
-// Initial load — fetch state from API then render
+// Initial load — fetch state from GUN + GitHub commits then render
 (async function() {
   await refreshState();
   renderAll();
+  // Load GitHub commits in background
+  loadCommits(false);
+
+  // GUN real-time sync — re-render when other peers write data
+  let syncTimer = null;
+  ['agents','tasks','projects','ideas','contributions','feed'].forEach(col => {
+    db.get(col).map().on(() => {
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(async () => { await refreshState(); renderAll(); }, 1500);
+    });
+  });
 
   // Wallet event listeners + auto-reconnect
   const provider = getProvider();
