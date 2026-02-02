@@ -1,0 +1,24 @@
+name: Merkle Root Anchor (daily)
+on:
+  schedule:
+    - cron: '0 0 * * *' # daily UTC midnight
+jobs:
+  build-and-anchor:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build Merkle root
+        run: |
+          set -e
+          node scripts/build_merkle.js provenance > merkle_roots/$(date -u +"%Y-%m-%d").json
+          git add merkle_roots/*.json
+          git commit -m "Add merkle root $(date -u +"%Y-%m-%d")" -S || echo "No changes"
+          git push || true
+      - name: Anchor Merkle root to Solana devnet (runner-only)
+        run: |
+          set -e
+          ROOT=$(jq -r .root merkle_roots/$(date -u +"%Y-%m-%d").json)
+          # Use solana CLI on self-hosted runner; keypair must be present on runner
+          solana config set --url https://api.devnet.solana.com
+          solana transfer --from anchor_wallet --to anchor_account 0.000001 --allow-unfunded-recipient --memo "$ROOT" || true

@@ -1,0 +1,28 @@
+name: Onboarding Faucet
+on:
+  pull_request:
+    paths:
+      - 'provenance/onboarding/**'
+jobs:
+  validate-and-credit:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate ContributionRecord signature & schema
+        run: |
+          set -e
+          ./scripts/validator_runner.sh "$GITHUB_WORKSPACE/provenance/onboarding" || { echo "Validation failed"; exit 1; }
+      - name: Award starter credits (ledger update)
+        env:
+          ACTOR_ID: ${{ github.actor }}
+        run: |
+          set -e
+          ./scripts/ledger_update.sh --actor "${ACTOR_ID}" --credits 10 --reason "onboarding-faucet"
+      - name: Commit ledger snapshot
+        run: |
+          git config user.name "GitClaw Bot"
+          git config user.email "gitclaw-bot@local"
+          git add ledger/ledger.json
+          git commit -m "Faucet credit for ${ACTOR_ID}" -S || echo "No changes to commit"
+          git push

@@ -1,0 +1,67 @@
+name: Build and Pin Artifact
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'projects/**'
+jobs:
+  build-pin:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build artifact
+        run: |
+          set -e
+          # Example build step - adapt to your project build
+          cd projects || exit 0
+          if [ -f ./build.sh ]; then
+            ./build.sh || true
+          fi
+          ARTIFACT_PATH=$(ls -1 projects/*.zip 2>/dev/null | head -n1 || true)
+          if [ -z "$ARTIFACT_PATH" ]; then
+            # Try top-level projects folder
+            ARTIFACT_PATH=$(ls -1 ./projects/*.zip 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$ARTIFACT_PATH" ]; then
+            echo "No artifact found; exiting"
+            exit 0
+          fi
+          echo "ARTIFACT_PATH=$ARTIFACT_PATH" > build.env
+      - name: Pin artifact to IPFS (self-hosted runner must have ipfs daemon)
+        run: |
+          set -e
+          source build.env
+          CID=$(ipfs add -Q "$ARTIFACT_PATH")
+          echo "ARTIFACT_CID=$CID" >> build.env
+          echo "Pinned artifact to IPFS: $CID"
+      - name: Create ContributionRecord and open PR
+        run: |
+          set -e
+          source build.env
+          RECORD_ID=$(uuidgen)
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          mkdir -p provenance
+          cat > provenance/${RECORD_ID}.json <<EOF
+          {
+            "record_id": "${RECORD_ID}",
+            "actor_id": "system-build",
+            "actor_pubkey": "",
+            "project_id": "$(basename "$ARTIFACT_PATH" .zip)",
+            "task_id": "build",
+            "action": "submit",
+            "result_cid": "ipfs://${CID}",
+            "validator_score": 0.0,
+            "credits_awarded": 0,
+            "timestamp": "${TIMESTAMP}",
+            "signature": ""
+          }
+          EOF
+          git checkout -b provenance-add-${RECORD_ID}
+          git add provenance/${RECORD_ID}.json
+          git commit -m "Add ContributionRecord ${RECORD_ID}" -S || true
+          git push --set-upstream origin provenance-add-${RECORD_ID} || true
+          if command -v gh >/dev/null 2>&1; then
+            gh pr create --title "Add ContributionRecord ${RECORD_ID}" --body "Automated build artifact record" || true
+          fi
