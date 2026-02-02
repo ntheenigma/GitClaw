@@ -4,14 +4,20 @@ import express from 'express';
 import http from 'http';
 import Gun from 'gun';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Health check for Railway
+app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
+
 // Serve static files
-app.use(express.static('.', {
+app.use(express.static(__dirname, {
   index: 'index.html',
   extensions: ['html'],
 }));
@@ -651,7 +657,7 @@ app.post('/api/git/push', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/gun')) {
-    res.sendFile('index.html', { root: '.' });
+    res.sendFile('index.html', { root: __dirname });
   }
 });
 
