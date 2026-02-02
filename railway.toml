@@ -1,11 +1,9 @@
 [build]
-builder = "NIXPACKS"
-
-[build.nixpacks]
-providers = ["node"]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "node server.mjs"
-healthcheckPath = "/"
+healthcheckPath = "/healthz"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
